@@ -189,7 +189,40 @@ systemctl enable --now bigdata-manager
 
 ## 8. Arayüze Erişim
 
+### A) Sunucu Aynı Ağdaysa (VPN / iç ağ)
+
+```bash
+# Firewall'da portu aç (CentOS/RHEL)
+sudo firewall-cmd --permanent --add-port=8000/tcp
+sudo firewall-cmd --reload
+```
+
 Tarayıcıda: `http://<cm-sunucu-ip>:8000`
+
+### B) SSH Tunnel ile Erişim (npm olmadan, dışarıdan)
+
+Kendi bilgisayarınızda (Windows PowerShell / Git Bash):
+
+```bash
+ssh -L 8000:localhost:8000 -N cm_user@<SUNUCU_IP>
+```
+
+Tunnel açıkken tarayıcıda: `http://localhost:8000`
+
+> Tunnel aktif olduğu sürece terminal penceresi açık kalmalıdır.
+
+### C) CentOS'ta npm Gerektirmeden Kurulum
+
+`frontend-dist/` klasörü git'e commit edilmiştir. **npm veya Node.js kurmanıza gerek yoktur.**
+
+```bash
+git clone https://github.com/vevcimen/bigdata-manager.git
+cd bigdata-manager
+python3.9 -m venv venv && source venv/bin/activate
+pip install -r backend/requirements.txt
+# frontend-dist/ otomatik gelir — npm install GEREKMİYOR
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
 
 Standalone (backend olmadan): `standalone.html` dosyasını çift tıklayarak açabilirsiniz.
 
@@ -212,6 +245,8 @@ Standalone (backend olmadan): `standalone.html` dosyasını çift tıklayarak a�
 | POST | /api/metrics/refresh | Manuel yenileme |
 | GET | /api/notifications | Bildirimler |
 | PATCH | /api/notifications/{id}/read | Okundu işaretle |
+| GET | /api/diag | Tam sistem diagnostics (DB, SSH, config, ağ) |
+| GET | /api/diag/logs | Son 200 uygulama log satırı |
 
 ---
 
