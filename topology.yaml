@@ -1,0 +1,370 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# BigData Manager — Topology Configuration
+# Her servis için birden fazla instance tanımlayabilirsiniz.
+# Daemon'lar systemctl üzerinden yönetilir (start/stop/restart/logs).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── HDFS ──────────────────────────────────────────────────────────────────
+  - name: "HDFS-İÇ"
+    type: hdfs
+    description: "İç HDFS Cluster — Primary"
+    hosts:
+      - hostname: hdfs-nn-01.internal
+        ip: 10.0.1.10
+        roles:
+          - type: namenode
+            systemctl: hadoop-hdfs-namenode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-namenode.log
+          - type: zkfc
+            systemctl: hadoop-hdfs-zkfc
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-zkfc.log
+          - type: journalnode
+            systemctl: hadoop-hdfs-journalnode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-journalnode.log
+
+      - hostname: hdfs-nn-02.internal
+        ip: 10.0.1.11
+        roles:
+          - type: namenode
+            systemctl: hadoop-hdfs-namenode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-namenode.log
+          - type: zkfc
+            systemctl: hadoop-hdfs-zkfc
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-zkfc.log
+          - type: journalnode
+            systemctl: hadoop-hdfs-journalnode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-journalnode.log
+
+      - hostname: hdfs-dn-01.internal
+        ip: 10.0.1.20
+        roles:
+          - type: datanode
+            systemctl: hadoop-hdfs-datanode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-datanode.log
+          - type: journalnode
+            systemctl: hadoop-hdfs-journalnode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-journalnode.log
+
+      # ... Diğer datanode'lar aynı pattern ile eklenebilir
+    extra:
+      webui_url: http://hdfs-nn-01.internal:9870
+      prometheus_job: hdfs
+
+  - name: "HDFS-DIŞ"
+    type: hdfs
+    description: "Dış HDFS Cluster — Analytics"
+    hosts:
+      - hostname: hdfs2-nn-01.internal
+        ip: 10.0.2.10
+        roles:
+          - type: namenode
+            systemctl: hadoop-hdfs-namenode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-namenode.log
+          - type: zkfc
+            systemctl: hadoop-hdfs-zkfc
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-zkfc.log
+      - hostname: hdfs2-dn-01.internal
+        ip: 10.0.2.20
+        roles:
+          - type: datanode
+            systemctl: hadoop-hdfs-datanode
+            log_path: /var/log/hadoop-hdfs/hadoop-hdfs-datanode.log
+    extra:
+      webui_url: http://hdfs2-nn-01.internal:9870
+      prometheus_job: hdfs2
+
+  # ── ZOOKEEPER ─────────────────────────────────────────────────────────────
+  - name: "Zookeeper-İÇ"
+    type: zookeeper
+    description: "Apache Zookeeper Cluster"
+    hosts:
+      - hostname: zk-01.internal
+        ip: 10.0.1.30
+        roles:
+          - type: zkserver
+            systemctl: zookeeper-server
+            log_path: /var/log/zookeeper/zookeeper.log
+
+      - hostname: zk-02.internal
+        ip: 10.0.1.31
+        roles:
+          - type: zkserver
+            systemctl: zookeeper-server
+            log_path: /var/log/zookeeper/zookeeper.log
+
+      - hostname: zk-03.internal
+        ip: 10.0.1.32
+        roles:
+          - type: zkserver
+            systemctl: zookeeper-server
+            log_path: /var/log/zookeeper/zookeeper.log
+    extra:
+      client_port: 2181
+      prometheus_job: zookeeper
+
+  # ── SPARK ─────────────────────────────────────────────────────────────────
+  - name: "Spark-İÇ"
+    type: spark
+    description: "Spark Cluster — İç"
+    hosts:
+      - hostname: spark-master-01.internal
+        ip: 10.0.1.40
+        roles:
+          - type: master
+            systemctl: spark-master
+            log_path: /var/log/spark/spark-master.out
+
+      - hostname: spark-worker-01.internal
+        ip: 10.0.1.50
+        roles:
+          - type: worker
+            systemctl: spark-worker
+            log_path: /var/log/spark/spark-worker.out
+
+      - hostname: spark-worker-02.internal
+        ip: 10.0.1.51
+        roles:
+          - type: worker
+            systemctl: spark-worker
+            log_path: /var/log/spark/spark-worker.out
+    extra:
+      master_url: spark://spark-master-01.internal:7077
+      webui_url: http://spark-master-01.internal:8080
+      prometheus_job: spark
+
+  - name: "Spark-DIŞ"
+    type: spark
+    description: "Spark Cluster — Dış"
+    hosts:
+      - hostname: spark2-master-01.internal
+        ip: 10.0.2.40
+        roles:
+          - type: master
+            systemctl: spark-master
+            log_path: /var/log/spark/spark-master.out
+      - hostname: spark2-worker-01.internal
+        ip: 10.0.2.50
+        roles:
+          - type: worker
+            systemctl: spark-worker
+            log_path: /var/log/spark/spark-worker.out
+    extra:
+      master_url: spark://spark2-master-01.internal:7077
+      webui_url: http://spark2-master-01.internal:8080
+      prometheus_job: spark2
+
+  # ── AIRFLOW ───────────────────────────────────────────────────────────────
+  - name: "Airflow-Prod"
+    type: airflow
+    description: "Apache Airflow — Production"
+    hosts:
+      - hostname: airflow-01.internal
+        ip: 10.0.1.60
+        roles:
+          - type: webserver
+            systemctl: airflow-webserver
+            log_path: /var/log/airflow/airflow-webserver.log
+          - type: scheduler
+            systemctl: airflow-scheduler
+            log_path: /var/log/airflow/airflow-scheduler.log
+    extra:
+      webui_url: http://airflow-01.internal:8080
+      # Airflow REST API erişimi için (metrik toplama)
+      api_url: http://airflow-01.internal:8080/api/v1
+      api_user: airflow_api_user
+      api_password: AIRFLOW_API_PASSWORD_BURAYA
+      prometheus_job: airflow
+
+  - name: "Airflow-Analytics"
+    type: airflow
+    description: "Apache Airflow — Analytics"
+    hosts:
+      - hostname: airflow-analytics-01.internal
+        ip: 10.0.2.60
+        roles:
+          - type: webserver
+            systemctl: airflow-webserver
+            log_path: /var/log/airflow/airflow-webserver.log
+          - type: scheduler
+            systemctl: airflow-scheduler
+            log_path: /var/log/airflow/airflow-scheduler.log
+    extra:
+      webui_url: http://airflow-analytics-01.internal:8080
+      api_url: http://airflow-analytics-01.internal:8080/api/v1
+      api_user: airflow_api_user
+      api_password: AIRFLOW_API_PASSWORD_BURAYA
+      prometheus_job: airflow_analytics
+
+  # ── PURE STORAGE (S3) ─────────────────────────────────────────────────────
+  # Daemon yok — adminliği bizde değil. Sadece mcli üzerinden metrik izleme.
+  - name: "Pure-Storage"
+    type: pure_storage
+    description: "Pure Storage S3 — Sadece Metrik İzleme"
+    hosts: []    # Erişim uzaktadır, SSH ile daemon yönetimi yok
+    extra:
+      # mcli ile erişim (mcli alias set pure https://... KEY SECRET)
+      mcli_alias: pure
+      endpoint: https://pure-s3.hmb.gov.tr
+      # İzlenecek bucket'lar (boş bırakılırsa hepsi)
+      monitor_buckets:
+        - raw-data
+        - processed-data
+        - ml-models
+        - backups
+        - logs
+        - analytics-export
+
+  # ── KAFKA ─────────────────────────────────────────────────────────────────
+  - name: "Kafka-İÇ"
+    type: kafka
+    description: "Apache Kafka Cluster"
+    hosts:
+      - hostname: kafka-01.internal
+        ip: 10.0.1.70
+        roles:
+          - type: broker
+            systemctl: kafka
+            log_path: /var/log/kafka/server.log
+
+      - hostname: kafka-02.internal
+        ip: 10.0.1.71
+        roles:
+          - type: broker
+            systemctl: kafka
+            log_path: /var/log/kafka/server.log
+
+      - hostname: kafka-connect-01.internal
+        ip: 10.0.1.75
+        roles:
+          - type: kafka_connect
+            systemctl: kafka-connect
+            log_path: /var/log/kafka/connect.log
+    extra:
+      bootstrap_servers: kafka-01.internal:9092,kafka-02.internal:9092
+      prometheus_job: kafka
+
+  # ── TRINO ─────────────────────────────────────────────────────────────────
+  - name: "Trino-İÇ"
+    type: trino
+    description: "Trino Cluster — İç"
+    hosts:
+      - hostname: trino-ic-coordinator.internal
+        ip: 10.0.1.80
+        roles:
+          - type: coordinator
+            systemctl: trino
+            log_path: /var/log/trino/server.log
+
+      - hostname: trino-ic-worker-01.internal
+        ip: 10.0.1.90
+        roles:
+          - type: worker
+            systemctl: trino
+            log_path: /var/log/trino/server.log
+
+      # Diğer 25 worker aynı pattern...
+    extra:
+      coordinator_url: http://trino-ic-coordinator.internal:8080
+      prometheus_job: trino_ic
+
+  - name: "Trino-DIŞ"
+    type: trino
+    description: "Trino Cluster — Dış"
+    hosts:
+      - hostname: trino-dis-coordinator.internal
+        ip: 10.0.2.80
+        roles:
+          - type: coordinator
+            systemctl: trino
+            log_path: /var/log/trino/server.log
+      - hostname: trino-dis-worker-01.internal
+        ip: 10.0.2.90
+        roles:
+          - type: worker
+            systemctl: trino
+            log_path: /var/log/trino/server.log
+    extra:
+      coordinator_url: http://trino-dis-coordinator.internal:8080
+      prometheus_job: trino_dis
+
+  # ── MYSQL ─────────────────────────────────────────────────────────────────
+  - name: "MySQL-Active"
+    type: mysql
+    description: "MySQL 8 — Production Active"
+    hosts:
+      - hostname: mysql-primary.internal
+        ip: 10.0.1.100
+        roles:
+          - type: mysqld
+            systemctl: mysqld
+            log_path: /var/log/mysqld.log
+    extra:
+      port: 3306
+      # MySQL metrik kullanıcısı (sadece SELECT + PROCESS yetkisi yeterli)
+      monitor_user: cm_monitor
+      monitor_password: MYSQL_MONITOR_PASSWORD_BURAYA
+      prometheus_job: mysql
+
+  # ── APACHE DORIS ──────────────────────────────────────────────────────────
+  # ÖZEL: BE sunucularına doğrudan SSH erişimi yok.
+  # BE'ye erişim: CM Server → (SSH) → FE sunucusu → (SSH) → BE sunucusu
+  - name: "Doris-Prod"
+    type: doris
+    description: "Apache Doris Cluster"
+    hosts:
+      # FE Sunucuları — doğrudan SSH ile erişilebilir
+      - hostname: doris-fe-01.internal
+        ip: 10.0.1.110
+        roles:
+          - type: fe
+            systemctl: doris-fe
+            log_path: /opt/doris/fe/log/fe.log
+
+      - hostname: doris-fe-02.internal
+        ip: 10.0.1.111
+        roles:
+          - type: fe
+            systemctl: doris-fe
+            log_path: /opt/doris/fe/log/fe.log
+
+      - hostname: doris-fe-03.internal
+        ip: 10.0.1.112
+        roles:
+          - type: fe
+            systemctl: doris-fe
+            log_path: /opt/doris/fe/log/fe.log
+
+      # BE Sunucuları — SADECE aktif FE üzerinden jump SSH ile erişilir
+      # jump_via: Hangi FE host'u üzerinden atlanacak (aktif FE)
+      - hostname: doris-be-01.internal
+        ip: 10.0.1.120
+        jump_via: doris-fe-01.internal    # Bu FE üzerinden SSH ile atla
+        roles:
+          - type: be
+            systemctl: doris-be
+            log_path: /opt/doris/be/log/be.log
+
+      - hostname: doris-be-02.internal
+        ip: 10.0.1.121
+        jump_via: doris-fe-01.internal
+        roles:
+          - type: be
+            systemctl: doris-be
+            log_path: /opt/doris/be/log/be.log
+
+      - hostname: doris-be-03.internal
+        ip: 10.0.1.122
+        jump_via: doris-fe-01.internal
+        roles:
+          - type: be
+            systemctl: doris-be
+            log_path: /opt/doris/be/log/be.log
+    extra:
+      fe_http_url: http://doris-fe-01.internal:8030
+      fe_query_port: 9030
+      # Doris HTTP API erişimi için
+      fe_user: root
+      fe_password: DORIS_FE_PASSWORD_BURAYA
+      prometheus_job: doris

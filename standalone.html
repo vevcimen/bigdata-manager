@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BigData Manager</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0f1117;color:#c9d1d9;display:flex;height:100vh;overflow:hidden}
+a{color:inherit;text-decoration:none}
+/* ── Sidebar ── */
+#sidebar{width:240px;min-width:240px;background:#161b22;border-right:1px solid #21262d;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.logo{padding:16px 20px;font-size:16px;font-weight:700;color:#58a6ff;border-bottom:1px solid #21262d;display:flex;align-items:center;gap:8px}
+.logo svg{flex-shrink:0}
+.sb-section{padding:8px 0}
+.sb-label{font-size:10px;text-transform:uppercase;color:#8b949e;padding:6px 20px 2px;letter-spacing:.08em}
+.sb-item{display:flex;align-items:center;gap:10px;padding:7px 20px;cursor:pointer;font-size:13px;color:#c9d1d9;border-left:3px solid transparent;transition:all .15s}
+.sb-item:hover{background:#1f2937;color:#e6edf3}
+.sb-item.active{background:#0d1117;color:#58a6ff;border-left-color:#58a6ff}
+.sb-item svg{width:14px;height:14px;flex-shrink:0;opacity:.7}
+/* Collapsible hosts */
+.sb-hosts-toggle{display:flex;align-items:center;gap:8px;padding:6px 20px;cursor:pointer;font-size:11px;color:#8b949e;user-select:none}
+.sb-hosts-toggle:hover{color:#c9d1d9}
+.sb-hosts-toggle .arrow{transition:transform .2s;font-size:10px}
+.sb-hosts-toggle.open .arrow{transform:rotate(90deg)}
+.sb-hosts-body{display:none;background:#0d1117}
+.sb-hosts-body.open{display:block}
+.sb-host-entry{padding:5px 20px 5px 36px;font-size:11px;color:#8b949e}
+.sb-host-entry .host-name{color:#c9d1d9;font-weight:500;display:block;margin-bottom:2px}
+.sb-host-role{display:inline-block;background:#1f2937;border-radius:3px;padding:1px 6px;font-size:10px;margin:1px 2px 1px 0;color:#8b949e}
+.sb-host-role.active{color:#3fb950}
+.sb-host-role.failed{color:#f85149}
+.sb-host-role.inactive{color:#8b949e}
+/* ── Top bar ── */
+#topbar{height:52px;background:#161b22;border-bottom:1px solid #21262d;display:flex;align-items:center;padding:0 24px;gap:16px;flex-shrink:0}
+.tb-title{font-size:15px;font-weight:600;color:#e6edf3;flex:1}
+.tb-btn{background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px;transition:all .15s}
+.tb-btn:hover{background:#30363d;color:#e6edf3}
+.tb-btn.spin svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Notifications bell */
+.notif-wrapper{position:relative}
+.notif-bell{background:none;border:none;cursor:pointer;color:#8b949e;padding:8px;border-radius:6px;display:flex;align-items:center;transition:color .15s}
+.notif-bell:hover{color:#e6edf3;background:#21262d}
+.notif-badge{position:absolute;top:3px;right:3px;background:#f85149;color:#fff;font-size:9px;font-weight:700;border-radius:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px;display:none}
+.notif-badge.visible{display:flex}
+.notif-dropdown{position:absolute;top:44px;right:0;width:340px;background:#161b22;border:1px solid #30363d;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:200;display:none}
+.notif-dropdown.open{display:block}
+.notif-header{padding:12px 16px;border-bottom:1px solid #21262d;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600}
+.notif-list{max-height:320px;overflow-y:auto}
+.notif-item{padding:10px 16px;border-bottom:1px solid #21262d;cursor:pointer;transition:background .1s}
+.notif-item:hover{background:#1f2937}
+.notif-item.unread{border-left:3px solid #58a6ff}
+.notif-item .n-title{font-size:12px;font-weight:600;color:#e6edf3}
+.notif-item .n-msg{font-size:11px;color:#8b949e;margin-top:2px}
+.notif-item .n-time{font-size:10px;color:#6e7681;margin-top:3px}
+.notif-item.critical .n-title{color:#f85149}
+.notif-item.warning .n-title{color:#d29922}
+.notif-read-all{padding:10px 16px;font-size:12px;color:#58a6ff;cursor:pointer;text-align:center;border-top:1px solid #21262d}
+.notif-read-all:hover{background:#1f2937}
+/* ── Main content ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#content{flex:1;overflow-y:auto;padding:24px}
+/* ── Cards & Grid ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card-title{font-size:13px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.stat-number{font-size:28px;font-weight:700;color:#e6edf3;line-height:1}
+.stat-label{font-size:12px;color:#8b949e;margin-top:4px}
+/* ── Status badges ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-green{background:#1a3828;color:#3fb950}
+.badge-red{background:#3d1a1a;color:#f85149}
+.badge-yellow{background:#3d2e00;color:#d29922}
+.badge-grey{background:#21262d;color:#8b949e}
+.badge-blue{background:#0d2340;color:#58a6ff}
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;color:#8b949e;border-bottom:1px solid #21262d;font-weight:600}
+td{padding:9px 12px;border-bottom:1px solid #161b22;color:#c9d1d9;vertical-align:middle}
+tr:hover td{background:#1c2128}
+.tbl-wrap{background:#161b22;border:1px solid #21262d;border-radius:8px;overflow:hidden}
+/* ── Progress bars ── */
+.bar-wrap{background:#21262d;border-radius:4px;height:6px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.bar-green{background:#3fb950}
+.bar-yellow{background:#d29922}
+.bar-red{background:#f85149}
+.bar-blue{background:#58a6ff}
+/* ── Daemon controls (Cloudera style) ── */
+.daemon-section{margin-top:20px}
+.daemon-section-title{font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.daemon-host-block{background:#0d1117;border:1px solid #21262d;border-radius:8px;margin-bottom:12px;overflow:hidden}
+.daemon-host-header{background:#161b22;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #21262d}
+.daemon-host-name{font-size:13px;font-weight:600;color:#e6edf3}
+.daemon-host-ip{font-size:11px;color:#8b949e;margin-left:auto}
+.daemon-host-jump{font-size:10px;color:#d29922;margin-left:8px}
+.daemon-rows{}
+.daemon-row{display:flex;align-items:center;padding:9px 16px;border-bottom:1px solid #161b22;gap:12px}
+.daemon-row:last-child{border-bottom:none}
+.daemon-row:hover{background:#111827}
+.daemon-type{font-size:12px;font-weight:600;color:#c9d1d9;min-width:120px}
+.daemon-svc{font-size:11px;color:#8b949e;min-width:120px}
+.daemon-status{min-width:90px}
+.daemon-actions{margin-left:auto;display:flex;gap:6px}
+.btn-daemon{padding:4px 10px;border-radius:5px;border:1px solid;font-size:11px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px}
+.btn-start{background:#1a3828;border-color:#238636;color:#3fb950}
+.btn-start:hover{background:#238636;color:#fff}
+.btn-stop{background:#3d1a1a;border-color:#da3633;color:#f85149}
+.btn-stop:hover{background:#da3633;color:#fff}
+.btn-restart{background:#0d2340;border-color:#1f6feb;color:#58a6ff}
+.btn-restart:hover{background:#1f6feb;color:#fff}
+.btn-logs{background:#2d1b69;border-color:#6e40c9;color:#d2a8ff}
+.btn-logs:hover{background:#6e40c9;color:#fff}
+/* ── Log viewer modal ── */
+#log-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center}
+#log-modal.open{display:flex}
+.log-panel{background:#0d1117;border:1px solid #30363d;border-radius:10px;width:800px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column}
+.log-panel-header{padding:14px 18px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between}
+.log-panel-title{font-size:14px;font-weight:700;color:#e6edf3}
+.log-panel-close{background:none;border:none;color:#8b949e;cursor:pointer;font-size:20px;line-height:1}
+.log-panel-close:hover{color:#f85149}
+.log-body{flex:1;overflow-y:auto;padding:14px 18px;font-family:'Consolas','Courier New',monospace;font-size:12px;line-height:1.6;color:#8b949e;min-height:200px}
+.log-body .log-line{color:#c9d1d9;display:block}
+.log-body .log-line.err{color:#f85149}
+.log-body .log-line.warn{color:#d29922}
+.log-body .log-line.info{color:#58a6ff}
+.log-status{padding:8px 18px;border-top:1px solid #21262d;font-size:11px;color:#8b949e;display:flex;align-items:center;gap:8px}
+.log-dot{width:7px;height:7px;border-radius:50%;background:#3fb950;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* ── Sparklines ── */
+.sparkline{display:inline-block;vertical-align:middle}
+/* ── Misc ── */
+.page-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.page-title{font-size:20px;font-weight:700;color:#e6edf3}
+.page-subtitle{font-size:13px;color:#8b949e}
+.section-title{font-size:14px;font-weight:700;color:#e6edf3;margin:20px 0 12px}
+.mt-16{margin-top:16px}
+.gap-row{display:flex;gap:12px;align-items:center}
+.flex-1{flex:1}
+.text-green{color:#3fb950}
+.text-red{color:#f85149}
+.text-yellow{color:#d29922}
+.text-blue{color:#58a6ff}
+.text-grey{color:#8b949e}
+.small{font-size:11px}
+/* ── Toast notifications ── */
+#toast-area{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999}
+.toast{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px 16px;font-size:13px;color:#e6edf3;min-width:260px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:slideIn .25s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+.toast.success{border-left:3px solid #3fb950}
+.toast.error{border-left:3px solid #f85149}
+.toast.info{border-left:3px solid #58a6ff}
+.toast.warning{border-left:3px solid #d29922}
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#0d1117}
+::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#484f58}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ SIDEBAR -->
+<nav id="sidebar">
+  <div class="logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    </svg>
+    BigData Manager
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Genel Bakış</div>
+    <div class="sb-item active" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Servisler</div>
+    <div class="sb-item" data-page="trino">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+      Trino
+    </div>
+    <div class="sb-item" data-page="hdfs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12H2M12 2a10 10 0 010 20"/><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 010 20"/></svg>
+      HDFS
+    </div>
+    <div class="sb-item" data-page="spark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Spark
+    </div>
+    <div class="sb-item" data-page="airflow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6l4-4 4 4M8 18l4 4 4-4M4 12H2M22 12h-2"/><circle cx="12" cy="12" r="4"/></svg>
+      Airflow
+    </div>
+    <div class="sb-item" data-page="kafka">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Kafka
+    </div>
+    <div class="sb-item" data-page="zookeeper">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51L8.59 10.49"/></svg>
+      Zookeeper
+    </div>
+    <div class="sb-item" data-page="doris">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      Doris
+    </div>
+    <div class="sb-item" data-page="mysql">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      MySQL
+    </div>
+    <div class="sb-item" data-page="pure">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+      Pure Storage
+    </div>
+  </div>
+
+  <!-- Collapsible Hosts -->
+  <div class="sb-section">
+    <div class="sb-label">Hosts</div>
+    <div class="sb-hosts-toggle" id="sb-hosts-toggle">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+      Tüm Host'lar
+      <span class="arrow" style="margin-left:auto">&#9654;</span>
+    </div>
+    <div class="sb-hosts-body" id="sb-hosts-body"></div>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════ MAIN -->
+<div id="main">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div class="tb-title" id="tb-title">Dashboard</div>
+    <button class="tb-btn" id="btn-refresh" onclick="manualRefresh()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      Yenile
+    </button>
+    <div class="notif-wrapper">
+      <button class="notif-bell" id="notif-bell" onclick="toggleNotifDropdown()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <span class="notif-badge" id="notif-badge">0</span>
+      </button>
+      <div class="notif-dropdown" id="notif-dropdown">
+        <div class="notif-header">
+          Bildirimler
+          <span class="text-blue" style="font-size:12px;font-weight:400;cursor:pointer" onclick="markAllRead()">Hepsini okundu işaretle</span>
+        </div>
+        <div class="notif-list" id="notif-list"></div>
+        <div class="notif-read-all" onclick="markAllRead()">Tüm bildirimleri okundu işaretle</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content area -->
+  <div id="content"></div>
+</div>
+
+<!-- Log Modal -->
+<div id="log-modal">
+  <div class="log-panel">
+    <div class="log-panel-header">
+      <span class="log-panel-title" id="log-modal-title">Daemon Logları</span>
+      <button class="log-panel-close" onclick="closeLogModal()">&#10005;</button>
+    </div>
+    <div class="log-body" id="log-body"></div>
+    <div class="log-status" id="log-status">
+      <span class="log-dot"></span> <span id="log-status-text">Bağlanıyor…</span>
+    </div>
+  </div>
+</div>
+
+<!-- Toast area -->
+<div id="toast-area"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// MOCK DATA
+// ═══════════════════════════════════════════════════════════════
+const STATUSES = ["active","active","active","active","inactive","failed","active","active","active","activating"];
+function rnd(min,max){return Math.floor(Math.random()*(max-min+1))+min}
+function rndSt(){return STATUSES[rnd(0,STATUSES.length-1)]}
+function rndArr(n,min,max){return Array.from({length:n},()=>rnd(min,max))}
+
+// Service topology (mirrors topology.yaml)
+const TOPOLOGY = {
+  services: [
+    {name:"HDFS-İÇ", type:"hdfs", description:"İç HDFS Cluster — Primary",
+     extra:{webui_url:"http://hdfs-nn-01.internal:9870"},
+     hosts:[
+       {hostname:"hdfs-nn-01.internal", ip:"10.0.1.10", roles:[
+         {type:"namenode",systemctl:"hadoop-hdfs-namenode",status:"active"},
+         {type:"zkfc",systemctl:"hadoop-hdfs-zkfc",status:"active"},
+         {type:"journalnode",systemctl:"hadoop-hdfs-journalnode",status:"active"}]},
+       {hostname:"hdfs-nn-02.internal", ip:"10.0.1.11", roles:[
+         {type:"namenode",systemctl:"hadoop-hdfs-namenode",status:"active"},
+         {type:"zkfc",systemctl:"hadoop-hdfs-zkfc",status:"active"},
+         {type:"journalnode",systemctl:"hadoop-hdfs-journalnode",status:"active"}]},
+       {hostname:"hdfs-dn-01.internal", ip:"10.0.1.20", roles:[
+         {type:"datanode",systemctl:"hadoop-hdfs-datanode",status:"active"},
+         {type:"journalnode",systemctl:"hadoop-hdfs-journalnode",status:"active"}]},
+     ]},
+    {name:"HDFS-DIŞ", type:"hdfs", description:"Dış HDFS Cluster — Analytics",
+     extra:{webui_url:"http://hdfs2-nn-01.internal:9870"},
+     hosts:[
+       {hostname:"hdfs2-nn-01.internal", ip:"10.0.2.10", roles:[
+         {type:"namenode",systemctl:"hadoop-hdfs-namenode",status:"active"},
+         {type:"zkfc",systemctl:"hadoop-hdfs-zkfc",status:"active"}]},
+       {hostname:"hdfs2-dn-01.internal", ip:"10.0.2.20", roles:[
+         {type:"datanode",systemctl:"hadoop-hdfs-datanode",status:"inactive"}]},
+     ]},
+    {name:"Zookeeper-İÇ", type:"zookeeper", description:"Apache Zookeeper Cluster",
+     hosts:[
+       {hostname:"zk-01.internal", ip:"10.0.1.30", roles:[{type:"zkserver",systemctl:"zookeeper-server",status:"active"}]},
+       {hostname:"zk-02.internal", ip:"10.0.1.31", roles:[{type:"zkserver",systemctl:"zookeeper-server",status:"active"}]},
+       {hostname:"zk-03.internal", ip:"10.0.1.32", roles:[{type:"zkserver",systemctl:"zookeeper-server",status:"active"}]},
+     ]},
+    {name:"Spark-İÇ", type:"spark", description:"Spark Cluster — İç",
+     extra:{webui_url:"http://spark-master-01.internal:8080"},
+     hosts:[
+       {hostname:"spark-master-01.internal", ip:"10.0.1.40", roles:[{type:"master",systemctl:"spark-master",status:"active"}]},
+       {hostname:"spark-worker-01.internal", ip:"10.0.1.50", roles:[{type:"worker",systemctl:"spark-worker",status:"active"}]},
+       {hostname:"spark-worker-02.internal", ip:"10.0.1.51", roles:[{type:"worker",systemctl:"spark-worker",status:"active"}]},
+     ]},
+    {name:"Spark-DIŞ", type:"spark", description:"Spark Cluster — Dış",
+     extra:{webui_url:"http://spark2-master-01.internal:8080"},
+     hosts:[
+       {hostname:"spark2-master-01.internal", ip:"10.0.2.40", roles:[{type:"master",systemctl:"spark-master",status:"active"}]},
+       {hostname:"spark2-worker-01.internal", ip:"10.0.2.50", roles:[{type:"worker",systemctl:"spark-worker",status:"failed"}]},
+     ]},
+    {name:"Airflow-Prod", type:"airflow", description:"Apache Airflow — Production",
+     extra:{webui_url:"http://airflow-01.internal:8080"},
+     hosts:[
+       {hostname:"airflow-01.internal", ip:"10.0.1.60", roles:[
+         {type:"webserver",systemctl:"airflow-webserver",status:"active"},
+         {type:"scheduler",systemctl:"airflow-scheduler",status:"active"}]},
+     ]},
+    {name:"Airflow-Analytics", type:"airflow", description:"Apache Airflow — Analytics",
+     extra:{webui_url:"http://airflow-analytics-01.internal:8080"},
+     hosts:[
+       {hostname:"airflow-analytics-01.internal", ip:"10.0.2.60", roles:[
+         {type:"webserver",systemctl:"airflow-webserver",status:"active"},
+         {type:"scheduler",systemctl:"airflow-scheduler",status:"activating"}]},
+     ]},
+    {name:"Kafka-İÇ", type:"kafka", description:"Apache Kafka Cluster",
+     extra:{bootstrap_servers:"kafka-01.internal:9092,kafka-02.internal:9092"},
+     hosts:[
+       {hostname:"kafka-01.internal", ip:"10.0.1.70", roles:[{type:"broker",systemctl:"kafka",status:"active"}]},
+       {hostname:"kafka-02.internal", ip:"10.0.1.71", roles:[{type:"broker",systemctl:"kafka",status:"active"}]},
+       {hostname:"kafka-connect-01.internal", ip:"10.0.1.75", roles:[{type:"kafka_connect",systemctl:"kafka-connect",status:"active"}]},
+     ]},
+    {name:"Trino-İÇ", type:"trino", description:"Trino Cluster — İç",
+     extra:{coordinator_url:"http://trino-ic-coordinator.internal:8080"},
+     hosts:[
+       {hostname:"trino-ic-coordinator.internal", ip:"10.0.1.80", roles:[{type:"coordinator",systemctl:"trino",status:"active"}]},
+       ...[...Array(26)].map((_,i)=>({
+         hostname:`trino-ic-worker-${String(i+1).padStart(2,'0')}.internal`,
+         ip:`10.0.1.${90+i}`,
+         roles:[{type:"worker",systemctl:"trino",status:i===12?"failed":"active"}]
+       }))
+     ]},
+    {name:"Trino-DIŞ", type:"trino", description:"Trino Cluster — Dış",
+     extra:{coordinator_url:"http://trino-dis-coordinator.internal:8080"},
+     hosts:[
+       {hostname:"trino-dis-coordinator.internal", ip:"10.0.2.80", roles:[{type:"coordinator",systemctl:"trino",status:"active"}]},
+       ...[...Array(26)].map((_,i)=>({
+         hostname:`trino-dis-worker-${String(i+1).padStart(2,'0')}.internal`,
+         ip:`10.0.2.${90+i}`,
+         roles:[{type:"worker",systemctl:"trino",status:"active"}]
+       }))
+     ]},
+    {name:"MySQL-Active", type:"mysql", description:"MySQL 8 — Production Active",
+     hosts:[
+       {hostname:"mysql-primary.internal", ip:"10.0.1.100", roles:[{type:"mysqld",systemctl:"mysqld",status:"active"}]},
+     ]},
+    {name:"Doris-Prod", type:"doris", description:"Apache Doris Cluster",
+     extra:{fe_http_url:"http://doris-fe-01.internal:8030"},
+     hosts:[
+       {hostname:"doris-fe-01.internal", ip:"10.0.1.110", roles:[{type:"fe",systemctl:"doris-fe",status:"active"}]},
+       {hostname:"doris-fe-02.internal", ip:"10.0.1.111", roles:[{type:"fe",systemctl:"doris-fe",status:"active"}]},
+       {hostname:"doris-fe-03.internal", ip:"10.0.1.112", roles:[{type:"fe",systemctl:"doris-fe",status:"active"}]},
+       {hostname:"doris-be-01.internal", ip:"10.0.1.120", jump_via:"doris-fe-01.internal", roles:[{type:"be",systemctl:"doris-be",status:"active"}]},
+       {hostname:"doris-be-02.internal", ip:"10.0.1.121", jump_via:"doris-fe-01.internal", roles:[{type:"be",systemctl:"doris-be",status:"active"}]},
+       {hostname:"doris-be-03.internal", ip:"10.0.1.122", jump_via:"doris-fe-01.internal", roles:[{type:"be",systemctl:"doris-be",status:"active"}]},
+     ]},
+    {name:"Pure-Storage", type:"pure_storage", description:"Pure Storage S3 — Sadece Metrik İzleme",
+     extra:{endpoint:"https://pure-s3.hmb.gov.tr", mcli_alias:"pure"},
+     hosts:[],
+     metrics_only: true,
+     buckets:[
+       {name:"raw-data",      size_gb:4820, objects:1200400, last_modified:"2026-03-10"},
+       {name:"processed-data",size_gb:2140, objects:485200,  last_modified:"2026-03-11"},
+       {name:"ml-models",     size_gb:380,  objects:1840,    last_modified:"2026-03-09"},
+       {name:"backups",       size_gb:9200, objects:84200,   last_modified:"2026-03-11"},
+       {name:"logs",          size_gb:1650, objects:3800200, last_modified:"2026-03-11"},
+       {name:"analytics-export",size_gb:620, objects:48200,  last_modified:"2026-03-08"},
+     ]}
+  ]
+};
+
+// Mock notifications
+let NOTIFS = [
+  {id:1, title:"Daemon FAILED: worker", message:"trino-ic-worker-13 — worker daemon failed.", level:"critical", source:"trino-ic-worker-13.internal", is_read:false, created_at:new Date(Date.now()-5*60000).toISOString()},
+  {id:2, title:"Daemon FAILED: worker", message:"spark2-worker-01 — spark-worker failed.", level:"critical", source:"spark2-worker-01.internal", is_read:false, created_at:new Date(Date.now()-18*60000).toISOString()},
+  {id:3, title:"Disk kullanımı yüksek", message:"kafka-02 disk %87 doluluk.", level:"warning", source:"kafka-02.internal", is_read:true, created_at:new Date(Date.now()-2*3600000).toISOString()},
+];
+let notifIdSeq = 10;
+
+// ═══════════════════════════════════════════════════════════════
+// API helper (falls back to mock on error)
+// ═══════════════════════════════════════════════════════════════
+const API = window.location.hostname !== '' && window.location.protocol !== 'file:'
+  ? '' : null;
+
+async function apiFetch(path, opts={}) {
+  if (!API && API !== '') return null;
+  try {
+    const res = await fetch(path, opts);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const STATE = {
+  page: 'dashboard',
+  notifOpen: false,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+function statusBadge(s) {
+  const m = {active:'badge-green',inactive:'badge-grey',failed:'badge-red',activating:'badge-yellow',deactivating:'badge-yellow',unknown:'badge-grey'};
+  const label = {active:'Active',inactive:'Inactive',failed:'Failed',activating:'Starting…',deactivating:'Stopping…',unknown:'Unknown'};
+  return `<span class="badge ${m[s]||'badge-grey'}">${label[s]||s}</span>`;
+}
+function bar(val, max, color='bar-blue') {
+  const pct = Math.min(100, Math.round(val/max*100));
+  const c = pct>85?'bar-red':pct>65?'bar-yellow':color;
+  return `<div class="bar-wrap" style="width:80px"><div class="bar-fill ${c}" style="width:${pct}%"></div></div>`;
+}
+function pct(val) {
+  const c = val>85?'text-red':val>65?'text-yellow':'text-green';
+  return `<span class="${c}">${val}%</span>`;
+}
+function sparkSVG(data, color='#58a6ff', h=30) {
+  const w=80, pad=2;
+  const max=Math.max(...data,1), min=Math.min(...data,0);
+  const range=max-min||1;
+  const pts=data.map((v,i)=>{
+    const x=pad+(i/(data.length-1))*(w-2*pad);
+    const y=h-pad-((v-min)/range)*(h-2*pad);
+    return `${x},${y}`;
+  }).join(' ');
+  return `<svg class="sparkline" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+function card(title, body) {
+  return `<div class="card"><div class="card-title">${title}</div>${body}</div>`;
+}
+function statCard(label, val, sub='', color='') {
+  return `<div class="card"><div class="stat-number ${color}">${val}</div><div class="stat-label">${label}</div>${sub?`<div class="small text-grey" style="margin-top:6px">${sub}</div>`:''}</div>`;
+}
+function tblWrap(headers, rows) {
+  const hdr = headers.map(h=>`<th>${h}</th>`).join('');
+  const body = rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+  return `<div class="tbl-wrap"><table><thead><tr>${hdr}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function relTime(iso) {
+  const d = new Date(iso), now = Date.now();
+  const s = Math.floor((now - d)/1000);
+  if(s<60) return `${s}s önce`;
+  if(s<3600) return `${Math.floor(s/60)}dk önce`;
+  return `${Math.floor(s/3600)}sa önce`;
+}
+function countByStatus(service) {
+  let active=0, inactive=0, failed=0, other=0;
+  (service.hosts||[]).forEach(h=>(h.roles||[]).forEach(r=>{
+    if(r.status==='active') active++;
+    else if(r.status==='inactive') inactive++;
+    else if(r.status==='failed') failed++;
+    else other++;
+  }));
+  return {active, inactive, failed, other};
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DAEMON CONTROLS RENDERER
+// ═══════════════════════════════════════════════════════════════
+function renderDaemonControls(service, readonly=false) {
+  if (!service.hosts || service.hosts.length === 0) return '';
+  let html = '<div class="daemon-section">';
+  html += `<div class="daemon-section-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> Daemon Yönetimi</div>`;
+
+  service.hosts.forEach((host, hi) => {
+    if (!host.roles || host.roles.length === 0) return;
+    const jumpLabel = host.jump_via ? `<span class="daemon-host-jump">⤷ via ${host.jump_via}</span>` : '';
+    html += `<div class="daemon-host-block">
+      <div class="daemon-host-header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+        <span class="daemon-host-name">${host.hostname}</span>
+        <span class="daemon-host-ip">${host.ip||''}</span>
+        ${jumpLabel}
+      </div>
+      <div class="daemon-rows">`;
+
+    host.roles.forEach((role, ri) => {
+      const dId = `${service.name}__${hi}__${ri}`;
+      const actions = readonly ? '' : `
+        <div class="daemon-actions">
+          <button class="btn-daemon btn-start" onclick="daemonAction('${dId}','${service.name}','${host.hostname}','${role.systemctl}','start',this)">▶ Start</button>
+          <button class="btn-daemon btn-stop" onclick="daemonAction('${dId}','${service.name}','${host.hostname}','${role.systemctl}','stop',this)">■ Stop</button>
+          <button class="btn-daemon btn-restart" onclick="daemonAction('${dId}','${service.name}','${host.hostname}','${role.systemctl}','restart',this)">↺ Restart</button>
+          <button class="btn-daemon btn-logs" onclick="openLogModal('${dId}','${service.name}@${host.hostname}','${role.type}')">📋 Logs</button>
+        </div>`;
+
+      html += `<div class="daemon-row" id="drow-${dId}">
+        <span class="daemon-type">${role.type}</span>
+        <span class="daemon-svc">${role.systemctl}</span>
+        <span class="daemon-status" id="dst-${dId}">${statusBadge(role.status||'unknown')}</span>
+        ${actions}
+      </div>`;
+    });
+
+    html += `</div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DAEMON ACTIONS
+// ═══════════════════════════════════════════════════════════════
+async function daemonAction(dId, svcName, hostname, systemctl, action, btn) {
+  const origTxt = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '…';
+  showToast(`${action} → ${systemctl} @ ${hostname}`, 'info');
+
+  // Try API
+  const res = await apiFetch(`/api/daemons/action`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({hostname, systemctl, action})
+  });
+
+  // Update mock status optimistically
+  const statusMap = {start:'active', stop:'inactive', restart:'active'};
+  const newStatus = statusMap[action] || 'active';
+  _updateMockStatus(svcName, hostname, systemctl, newStatus);
+  const el = document.getElementById(`dst-${dId}`);
+  if (el) el.innerHTML = statusBadge(newStatus);
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = origTxt;
+  }, 1200);
+
+  showToast(`${action} tamamlandı: ${systemctl}`, 'success');
+}
+
+function _updateMockStatus(svcName, hostname, systemctl, status) {
+  const svc = TOPOLOGY.services.find(s=>s.name===svcName);
+  if (!svc) return;
+  const host = (svc.hosts||[]).find(h=>h.hostname===hostname);
+  if (!host) return;
+  const role = (host.roles||[]).find(r=>r.systemctl===systemctl);
+  if (role) role.status = status;
+  renderSidebarHosts();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOG MODAL
+// ═══════════════════════════════════════════════════════════════
+let _logEventSource = null;
+
+function openLogModal(dId, label, roleType) {
+  document.getElementById('log-modal-title').textContent = `Logs — ${label} (${roleType})`;
+  const body = document.getElementById('log-body');
+  body.innerHTML = '';
+  document.getElementById('log-status-text').textContent = 'Bağlanıyor…';
+  document.getElementById('log-modal').classList.add('open');
+
+  if (_logEventSource) { _logEventSource.close(); _logEventSource = null; }
+
+  // Try SSE
+  const [svcName, hostIdx, roleIdx] = dId.split('__');
+  _appendLogLine('info', `[Mock log] ${svcName} — ${roleType} daemon log stream`);
+  _appendLogLine('', '2026-03-11 12:00:01 INFO  Starting service...');
+  _appendLogLine('', '2026-03-11 12:00:02 INFO  Loaded configuration');
+  _appendLogLine('warn', '2026-03-11 12:00:05 WARN  Connection pool at 80% capacity');
+  _appendLogLine('', '2026-03-11 12:00:08 INFO  Ready to accept connections');
+  document.getElementById('log-status-text').textContent = 'Bağlantı kuruldu (mock)';
+
+  // Try real SSE
+  if (API !== null) {
+    try {
+      const es = new EventSource(`/api/daemons/${dId}/logs`);
+      _logEventSource = es;
+      es.onmessage = e => _appendLogLine('', e.data);
+      es.onerror = () => { document.getElementById('log-status-text').textContent = 'Bağlantı kesildi'; };
+      document.getElementById('log-status-text').textContent = 'Canlı stream aktif';
+    } catch(e) {}
+  }
+}
+
+function _appendLogLine(type, text) {
+  const body = document.getElementById('log-body');
+  const el = document.createElement('span');
+  el.className = `log-line ${type}`;
+  el.textContent = text;
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+}
+
+function closeLogModal() {
+  document.getElementById('log-modal').classList.remove('open');
+  if (_logEventSource) { _logEventSource.close(); _logEventSource = null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+function renderNotifications() {
+  const unread = NOTIFS.filter(n=>!n.is_read).length;
+  const badge = document.getElementById('notif-badge');
+  badge.textContent = unread;
+  badge.classList.toggle('visible', unread > 0);
+
+  const list = document.getElementById('notif-list');
+  if (NOTIFS.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:#8b949e;font-size:12px">Bildirim yok</div>';
+    return;
+  }
+  list.innerHTML = NOTIFS.map(n => `
+    <div class="notif-item ${n.level} ${n.is_read?'':'unread'}" onclick="markRead(${n.id})">
+      <div class="n-title">${n.title}</div>
+      <div class="n-msg">${n.message}</div>
+      <div class="n-time">${relTime(n.created_at)} · ${n.source}</div>
+    </div>
+  `).join('');
+}
+
+function toggleNotifDropdown() {
+  const dd = document.getElementById('notif-dropdown');
+  dd.classList.toggle('open');
+  STATE.notifOpen = dd.classList.contains('open');
+  if (STATE.notifOpen) renderNotifications();
+}
+
+function markRead(id) {
+  const n = NOTIFS.find(x=>x.id===id);
+  if (n) n.is_read = true;
+  renderNotifications();
+}
+
+function markAllRead() {
+  NOTIFS.forEach(n=>n.is_read=true);
+  renderNotifications();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!document.getElementById('notif-bell').contains(e.target) &&
+      !document.getElementById('notif-dropdown').contains(e.target)) {
+    document.getElementById('notif-dropdown').classList.remove('open');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+function showToast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${msg}</span>`;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANUAL REFRESH
+// ═══════════════════════════════════════════════════════════════
+async function manualRefresh() {
+  const btn = document.getElementById('btn-refresh');
+  btn.classList.add('spin');
+  showToast('Metrikler güncelleniyor…', 'info');
+  const res = await apiFetch('/api/metrics/refresh', {method:'POST'});
+  setTimeout(() => {
+    btn.classList.remove('spin');
+    showToast('Güncelleme tamamlandı', 'success');
+    navigate(STATE.page);  // re-render
+  }, 1200);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIDEBAR HOSTS
+// ═══════════════════════════════════════════════════════════════
+function renderSidebarHosts() {
+  const body = document.getElementById('sb-hosts-body');
+  let html = '';
+  TOPOLOGY.services.forEach(svc => {
+    (svc.hosts||[]).forEach(host => {
+      if (!host.roles || !host.roles.length) return;
+      const roles = host.roles.map(r => {
+        const cls = r.status==='active'?'active':r.status==='failed'?'failed':'inactive';
+        return `<span class="sb-host-role ${cls}">${r.type}</span>`;
+      }).join('');
+      html += `<div class="sb-host-entry">
+        <span class="host-name">${host.hostname}</span>
+        ${roles}
+      </div>`;
+    });
+  });
+  body.innerHTML = html;
+}
+
+document.getElementById('sb-hosts-toggle').addEventListener('click', () => {
+  const toggle = document.getElementById('sb-hosts-toggle');
+  const body = document.getElementById('sb-hosts-body');
+  toggle.classList.toggle('open');
+  body.classList.toggle('open');
+  if (body.classList.contains('open')) renderSidebarHosts();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// PAGES
+// ═══════════════════════════════════════════════════════════════
+
+function pageDashboard() {
+  const svcs = TOPOLOGY.services;
+  const totalHosts = svcs.reduce((a,s)=>a+(s.hosts||[]).length,0);
+  const totalDaemons = svcs.reduce((a,s)=>a+(s.hosts||[]).reduce((b,h)=>b+(h.roles||[]).length,0),0);
+  const failedDaemons = svcs.reduce((a,s)=>a+(s.hosts||[]).reduce((b,h)=>b+(h.roles||[]).filter(r=>r.status==='failed').length,0),0);
+  const activeDaemons = svcs.reduce((a,s)=>a+(s.hosts||[]).reduce((b,h)=>b+(h.roles||[]).filter(r=>r.status==='active').length,0),0);
+
+  const svcRows = svcs.filter(s=>!s.metrics_only).map(s => {
+    const st = countByStatus(s);
+    const health = st.failed>0?'badge-red':st.inactive>0?'badge-yellow':'badge-green';
+    const healthLabel = st.failed>0?'Kritik':st.inactive>0?'Uyarı':'Sağlıklı';
+    return [s.name, `<span class="badge ${health}">${healthLabel}</span>`,
+      (s.hosts||[]).length, st.active, `<span class="text-red">${st.failed}</span>`, s.type];
+  });
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-subtitle">BigData ortamı genel durumu</div>
+      </div>
+    </div>
+    <div class="grid-4">
+      ${statCard('Toplam Servis', svcs.length)}
+      ${statCard('Toplam Host', totalHosts)}
+      ${statCard('Aktif Daemon', activeDaemons, '', 'text-green')}
+      ${statCard('Başarısız Daemon', failedDaemons, '', failedDaemons>0?'text-red':'')}
+    </div>
+    <div class="section-title">Servis Durumu</div>
+    ${tblWrap(['Servis','Durum','Host','Aktif','Hata','Tip'], svcRows)}
+    <div class="section-title" style="margin-top:24px">Son Bildirimler</div>
+    ${NOTIFS.length===0?'<div class="text-grey small">Bildirim yok.</div>':
+      tblWrap(['Seviye','Başlık','Kaynak','Zaman'],
+        NOTIFS.slice(0,5).map(n=>[
+          `<span class="badge ${n.level==='critical'?'badge-red':n.level==='warning'?'badge-yellow':'badge-blue'}">${n.level}</span>`,
+          n.title, n.source, relTime(n.created_at)
+        ])
+      )
+    }`;
+}
+
+function pageTrino() {
+  const clusters = TOPOLOGY.services.filter(s=>s.type==='trino');
+  let html = `<div class="page-header"><div><div class="page-title">Trino</div><div class="page-subtitle">${clusters.length} Cluster</div></div></div>`;
+  clusters.forEach(c => {
+    const st = countByStatus(c);
+    const workers = (c.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='worker'));
+    html += `<div style="margin-bottom:28px">
+      <div class="section-title">${c.name} — ${c.description}</div>
+      <div class="grid-4" style="margin-bottom:16px">
+        ${statCard('Koordinatör', 1)}
+        ${statCard('Worker', workers.length)}
+        ${statCard('Aktif', st.active, '', 'text-green')}
+        ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      </div>
+      ${tblWrap(['Host','IP','Rol','Durum'],
+        (c.hosts||[]).map(h=>h.roles.map(r=>[h.hostname, h.ip||'—', r.type, statusBadge(r.status)])).flat()
+      )}
+      ${renderDaemonControls(c)}
+    </div>`;
+  });
+  return html;
+}
+
+function pageHDFS() {
+  const clusters = TOPOLOGY.services.filter(s=>s.type==='hdfs');
+  let html = `<div class="page-header"><div><div class="page-title">HDFS</div><div class="page-subtitle">${clusters.length} Cluster</div></div></div>`;
+  clusters.forEach(c => {
+    const st = countByStatus(c);
+    html += `<div style="margin-bottom:28px">
+      <div class="section-title">${c.name} — ${c.description}</div>
+      <div class="grid-4" style="margin-bottom:16px">
+        ${statCard('Namenode', (c.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='namenode')).length)}
+        ${statCard('Datanode', (c.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='datanode')).length)}
+        ${statCard('Aktif', st.active, '', 'text-green')}
+        ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      </div>
+      ${tblWrap(['Host','IP','Rol','Durum'],
+        (c.hosts||[]).map(h=>h.roles.map(r=>[h.hostname, h.ip||'—', r.type, statusBadge(r.status)])).flat()
+      )}
+      ${renderDaemonControls(c)}
+    </div>`;
+  });
+  return html;
+}
+
+function pageSpark() {
+  const clusters = TOPOLOGY.services.filter(s=>s.type==='spark');
+  let html = `<div class="page-header"><div><div class="page-title">Spark</div><div class="page-subtitle">${clusters.length} Cluster</div></div></div>`;
+  clusters.forEach(c => {
+    const st = countByStatus(c);
+    html += `<div style="margin-bottom:28px">
+      <div class="section-title">${c.name} — ${c.description}</div>
+      <div class="grid-4" style="margin-bottom:16px">
+        ${statCard('Master', (c.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='master')).length)}
+        ${statCard('Worker', (c.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='worker')).length)}
+        ${statCard('Aktif', st.active, '', 'text-green')}
+        ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      </div>
+      ${tblWrap(['Host','IP','Rol','Durum'],
+        (c.hosts||[]).map(h=>h.roles.map(r=>[h.hostname, h.ip||'—', r.type, statusBadge(r.status)])).flat()
+      )}
+      ${renderDaemonControls(c)}
+    </div>`;
+  });
+  return html;
+}
+
+function pageAirflow() {
+  const instances = TOPOLOGY.services.filter(s=>s.type==='airflow');
+  let html = `<div class="page-header"><div><div class="page-title">Airflow</div><div class="page-subtitle">${instances.length} Instance</div></div></div>`;
+  instances.forEach(svc => {
+    const st = countByStatus(svc);
+    html += `<div style="margin-bottom:28px">
+      <div class="section-title">${svc.name} — ${svc.description}</div>
+      <div class="grid-4" style="margin-bottom:16px">
+        ${statCard('Host', (svc.hosts||[]).length)}
+        ${statCard('Aktif', st.active, '', 'text-green')}
+        ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+        ${statCard('Uyarı', st.other+st.inactive)}
+      </div>
+      ${tblWrap(['Host','IP','Rol','Durum'],
+        (svc.hosts||[]).map(h=>h.roles.map(r=>[h.hostname, h.ip||'—', r.type, statusBadge(r.status)])).flat()
+      )}
+      ${renderDaemonControls(svc)}
+    </div>`;
+  });
+  return html;
+}
+
+function pageKafka() {
+  const svc = TOPOLOGY.services.find(s=>s.type==='kafka');
+  if (!svc) return '<div class="text-grey">Kafka servisi bulunamadı.</div>';
+  const st = countByStatus(svc);
+  const brokers = (svc.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='broker'));
+  return `
+    <div class="page-header"><div><div class="page-title">Kafka</div><div class="page-subtitle">${svc.description}</div></div></div>
+    <div class="grid-4" style="margin-bottom:16px">
+      ${statCard('Broker', brokers.length)}
+      ${statCard('Aktif', st.active, '', 'text-green')}
+      ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      ${statCard('Bootstrap', '2 node')}
+    </div>
+    ${tblWrap(['Host','IP','Rol','Durum'],
+      (svc.hosts||[]).map(h=>h.roles.map(r=>[h.hostname, h.ip||'—', r.type, statusBadge(r.status)])).flat()
+    )}
+    ${renderDaemonControls(svc)}`;
+}
+
+function pageZookeeper() {
+  const svc = TOPOLOGY.services.find(s=>s.type==='zookeeper');
+  if (!svc) return '<div class="text-grey">Zookeeper servisi bulunamadı.</div>';
+  const st = countByStatus(svc);
+  return `
+    <div class="page-header"><div><div class="page-title">Zookeeper</div><div class="page-subtitle">${svc.description}</div></div></div>
+    <div class="grid-4" style="margin-bottom:16px">
+      ${statCard('Node', (svc.hosts||[]).length)}
+      ${statCard('Aktif', st.active, '', 'text-green')}
+      ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      ${statCard('Quorum', st.active>=2?'<span class="text-green">OK</span>':'<span class="text-red">FAIL</span>')}
+    </div>
+    ${tblWrap(['Host','IP','Durum'],
+      (svc.hosts||[]).map(h=>[h.hostname, h.ip||'—', statusBadge(h.roles[0]?.status||'unknown')])
+    )}
+    ${renderDaemonControls(svc)}`;
+}
+
+function pageDoris() {
+  const svc = TOPOLOGY.services.find(s=>s.type==='doris');
+  if (!svc) return '<div class="text-grey">Doris servisi bulunamadı.</div>';
+  const fe = (svc.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='fe'));
+  const be = (svc.hosts||[]).filter(h=>(h.roles||[]).some(r=>r.type==='be'));
+  const st = countByStatus(svc);
+  return `
+    <div class="page-header"><div><div class="page-title">Apache Doris</div><div class="page-subtitle">${svc.description}</div></div></div>
+    <div class="grid-4" style="margin-bottom:16px">
+      ${statCard('FE Node', fe.length)}
+      ${statCard('BE Node', be.length)}
+      ${statCard('Aktif', st.active, '', 'text-green')}
+      ${statCard('BE Jump-SSH', be.length, 'FE üzerinden')}
+    </div>
+    <div class="section-title">Frontend Nodes</div>
+    ${tblWrap(['Host','IP','Durum'],
+      fe.map(h=>[h.hostname, h.ip||'—', statusBadge(h.roles[0]?.status||'unknown')])
+    )}
+    <div class="section-title">Backend Nodes (via Jump-SSH)</div>
+    ${tblWrap(['Host','IP','Jump-Via','Durum'],
+      be.map(h=>[h.hostname, h.ip||'—', h.jump_via||'—', statusBadge(h.roles[0]?.status||'unknown')])
+    )}
+    ${renderDaemonControls(svc)}`;
+}
+
+function pageMySQL() {
+  const svc = TOPOLOGY.services.find(s=>s.type==='mysql');
+  if (!svc) return '<div class="text-grey">MySQL servisi bulunamadı.</div>';
+  const st = countByStatus(svc);
+  return `
+    <div class="page-header"><div><div class="page-title">MySQL</div><div class="page-subtitle">${svc.description}</div></div></div>
+    <div class="grid-4" style="margin-bottom:16px">
+      ${statCard('Instance', (svc.hosts||[]).length)}
+      ${statCard('Aktif', st.active, '', 'text-green')}
+      ${statCard('Hata', st.failed, '', st.failed>0?'text-red':'')}
+      ${statCard('Port', '3306')}
+    </div>
+    ${tblWrap(['Host','IP','Durum'],
+      (svc.hosts||[]).map(h=>[h.hostname, h.ip||'—', statusBadge(h.roles[0]?.status||'unknown')])
+    )}
+    ${renderDaemonControls(svc)}`;
+}
+
+function pagePure() {
+  const svc = TOPOLOGY.services.find(s=>s.type==='pure_storage');
+  if (!svc) return '<div class="text-grey">Pure Storage servisi bulunamadı.</div>';
+  const totalGB = (svc.buckets||[]).reduce((a,b)=>a+b.size_gb,0);
+  const totalObj = (svc.buckets||[]).reduce((a,b)=>a+b.objects,0);
+  return `
+    <div class="page-header"><div><div class="page-title">Pure Storage (S3)</div><div class="page-subtitle">${svc.description}</div></div></div>
+    <div class="card" style="margin-bottom:16px;border-color:#30363d">
+      <div style="display:flex;align-items:center;gap:8px;color:#d29922">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:12px;font-weight:600">Bu servis yalnızca metrik izleme modundadır — daemon yönetimi mevcut değil.</span>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-bottom:16px">
+      ${statCard('Bucket', (svc.buckets||[]).length)}
+      ${statCard('Toplam Boyut', `${(totalGB/1024).toFixed(1)} TB`)}
+      ${statCard('Toplam Nesne', totalObj.toLocaleString())}
+      ${statCard('Endpoint', svc.extra?.endpoint?.replace('https://','')?.split('.')[0]||'—')}
+    </div>
+    <div class="section-title">Bucket Metrikleri</div>
+    ${tblWrap(['Bucket','Boyut (GB)','Nesne','Son Değişiklik'],
+      (svc.buckets||[]).map(b=>[
+        `<span class="text-blue">${b.name}</span>`,
+        b.size_gb.toLocaleString(),
+        b.objects.toLocaleString(),
+        b.last_modified
+      ])
+    )}`;
+}
+
+const PAGES = {
+  dashboard: pageDashboard,
+  trino:     pageTrino,
+  hdfs:      pageHDFS,
+  spark:     pageSpark,
+  airflow:   pageAirflow,
+  kafka:     pageKafka,
+  zookeeper: pageZookeeper,
+  doris:     pageDoris,
+  mysql:     pageMySQL,
+  pure:      pagePure,
+};
+
+const PAGE_TITLES = {
+  dashboard:'Dashboard', trino:'Trino', hdfs:'HDFS', spark:'Spark',
+  airflow:'Airflow', kafka:'Kafka', zookeeper:'Zookeeper',
+  doris:'Apache Doris', mysql:'MySQL', pure:'Pure Storage'
+};
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function navigate(page) {
+  if (!PAGES[page]) page = 'dashboard';
+  STATE.page = page;
+
+  document.querySelectorAll('.sb-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+
+  document.getElementById('tb-title').textContent = PAGE_TITLES[page] || page;
+  document.getElementById('content').innerHTML = PAGES[page]();
+
+  // Update URL hash
+  location.hash = '#' + page;
+}
+
+// Sidebar clicks
+document.querySelectorAll('.sb-item[data-page]').forEach(el => {
+  el.addEventListener('click', () => navigate(el.dataset.page));
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+(function init() {
+  renderNotifications();
+  const hash = location.hash.replace('#','') || 'dashboard';
+  navigate(hash);
+
+  // Poll unread count from API every 30s
+  setInterval(async () => {
+    const res = await apiFetch('/api/notifications/unread');
+    if (res && typeof res.count === 'number' && res.count > 0) {
+      document.getElementById('notif-badge').textContent = res.count;
+      document.getElementById('notif-badge').classList.add('visible');
+    }
+  }, 30000);
+})();
+</script>
+</body>
+</html>
