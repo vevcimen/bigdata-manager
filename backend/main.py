@@ -67,9 +67,12 @@ app.include_router(metrics_router)
 app.include_router(hosts_router)
 app.include_router(notif_router)
 
-# standalone.html ve statik dosyaları sun
-_static_dir = os.path.join(os.path.dirname(__file__), "..")
-app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
+# React frontend dist klasörü (npm run build sonrası oluşur)
+# Yoksa standalone.html'i kök dizinden sun (fallback)
+_root_dir  = os.path.join(os.path.dirname(__file__), "..")
+_dist_dir  = os.path.join(_root_dir, "frontend-dist")
+_serve_dir = _dist_dir if os.path.isdir(_dist_dir) else _root_dir
+app.mount("/", StaticFiles(directory=_serve_dir, html=True), name="static")
 
 
 # ─── Startup / Shutdown ───────────────────────────────────────────────────────

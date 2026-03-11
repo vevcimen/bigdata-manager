@@ -119,7 +119,33 @@ mcli ls pure/
 
 ---
 
-## 7. Uygulamayı Başlatma
+## 7. Frontend Build (React UI)
+
+```bash
+cd frontend
+npm install
+npm run build
+# → Çıktı: ../frontend-dist/ klasörüne yazılır
+cd ..
+```
+
+Backend, `frontend-dist/` klasörü varsa React uygulamasını, yoksa `standalone.html`'i sunar.
+
+**Geliştirme modunda çalıştırma (hot-reload):**
+
+```bash
+# Terminal 1 — Backend
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2 — Frontend dev server (proxy: localhost:8000)
+cd frontend
+npm run dev
+# → http://localhost:3000
+```
+
+---
+
+## 8. Uygulamayı Başlatma
 
 ```bash
 # Ortam değişkeni (opsiyonel, varsayılan: ./cluster_manager.cfg)
