@@ -1,6 +1,7 @@
 # BigData Manager — Kurulum Kılavuzu (CentOS 8.x)
 
 ## Gereksinimler
+# test
 
 - Python 3.9+
 - MySQL 8.x (cluster_manager veritabanı)
