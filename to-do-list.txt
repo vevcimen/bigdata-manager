@@ -1,6 +1,6 @@
 To-do list(Hakki-2026-03-13):
 Frontend+backend: 
-    1- Her restart da topology yaml dan configler alınmamalı, ilk db initialization'i olacak ise, topoloji bilgisi topology.yaml dan alınabilir. Onun dışındaki normal restart lar da db deki configler kullanılmalı. 
+    1- Her restart da topology yaml dan configler alınmamalı, ilk db initialization'i olacak ise, sadece o durumda topoloji bilgisi topology.yaml dan alınabilir. Onun dışındaki normal restart lar da db deki configler kullanılmalı. 
     2- Ayrıca db configlerini topology.yaml olarak export etme yöntemi arayüze konulmalı.
     3- Arayüzde giriş için login/logout mekanizması olmalı. Default giriş için admin/admin kullanıcı ve şifresi kullanılsın, girdikten sonra admin kullanıcısı da dahil şifre değiştirlebilen user management menüsü olmalı. (sağda olabilir)
     4- Ekranda servisler için de servis ekleme, düzeltme vs olmalı. Bir servise tıkladığımda; sağda şunlar çıkmalı:
