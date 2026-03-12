@@ -6,4 +6,5 @@ Frontend+backend:
     4- Versiyonlama formatını v{yyyy-MM-dd} şeklinde geliştirilen günün tarihi olarak güncelleyelim.
     5- Host view de her host'un yanında bir de edit/düzenle butonu olsun.  Bu edit butonunda o host üstündeki monitor edilecek servis isimlerini, log dosya yolunu vb. düzenleyip kaydedebilmeliyim. Ayrıca doris için de "jump host" check box'ı olsun, o işaretlendiğinde de jump host girebilmeliyim.
     6- Ayrıca hosts ekranında "host ekleme ve host silme" butonları olmalı, host ekle butonunda da yine yaml da verdiğimiz parametrelerle bir host ekleyebilmeliyim. Orada servisler dropdown ile seçimle gelebilir.
+    7- Logs görüntüleme ekranında logu bastıktan sonra "log akışı kesildi" uyarısı geliyor bu problemin giderilmesi lazım. Oraya sağa bi refresh butonu koyulabilir. 
     
