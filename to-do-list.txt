@@ -1,10 +1,20 @@
-To-do list(Hakki-2026-03-12):
+To-do list(Hakki-2026-03-13):
 Frontend+backend: 
-    1- Soldaki menü hamburger menü olarak genişleyebilir olmalı.
-    2- Soldaki menü içinde hosts'a tıkladığımda sağda table veya grid seçimli şekilde sadece hosts listesi görmeliyim. Bu hosts listesinde bir host u genişlettiğimde ise o hosttaki rolleri görmeliyim, ve bu rollere ait, stop, start, restart, view logs butonlarını görmeliyim.
-    3- Arayüzdeki ismi "Kasırga" olarak değiştirelim.
-    4- Versiyonlama formatını v{yyyy-MM-dd} şeklinde geliştirilen günün tarihi olarak güncelleyelim.
-    5- Host view de her host'un yanında bir de edit/düzenle butonu olsun.  Bu edit butonunda o host üstündeki monitor edilecek servis isimlerini, log dosya yolunu vb. düzenleyip kaydedebilmeliyim. Ayrıca doris için de "jump host" check box'ı olsun, o işaretlendiğinde de jump host girebilmeliyim.
-    6- Ayrıca hosts ekranında "host ekleme ve host silme" butonları olmalı, host ekle butonunda da yine yaml da verdiğimiz parametrelerle bir host ekleyebilmeliyim. Orada servisler dropdown ile seçimle gelebilir.
-    7- Logs görüntüleme ekranında logu bastıktan sonra "log akışı kesildi" uyarısı geliyor bu problemin giderilmesi lazım. Oraya sağa bi refresh butonu koyulabilir. 
+    1- Her restart da topology yaml dan configler alınmamalı, ilk db initialization'i olacak ise, topoloji bilgisi topology.yaml dan alınabilir. Onun dışındaki normal restart lar da db deki configler kullanılmalı. 
+    2- Ayrıca db configlerini topology.yaml olarak export etme yöntemi arayüze konulmalı.
+    3- Arayüzde giriş için login/logout mekanizması olmalı. Default giriş için admin/admin kullanıcı ve şifresi kullanılsın, girdikten sonra admin kullanıcısı da dahil şifre değiştirlebilen user management menüsü olmalı. (sağda olabilir)
+    4- Ekranda servisler için de servis ekleme, düzeltme vs olmalı. Bir servise tıkladığımda; sağda şunlar çıkmalı:
+      HDFS'ler için:
+        * Historik hdfs doluluğu grafiği olmalı.
+        * namenode ekranındaki Overview tabındaki Summary kısmı görünmeli.
+        * HDFS'e ait başka metriklerin historik grafikleri de olabilir.
+      Spark'lar için:
+        * Spark master ekranındaki running applications görünmeli.
+      Trino'lar için:
+        * Trino queries görünmeli. Yani running query'ler ve progress'leri görünmeli. 
+      Airflow için:
+        * Running dag'ların bir listesi olmalı.
+      Bu maddelerin bazıları (örn:trino ve airflow) için otantikasyon gerekebilir, servis kullanıcı bilgilerini (username/password) servis ekleme/düzeltme mekanizmasında arayüzde istemelisin.
+
+      
     
