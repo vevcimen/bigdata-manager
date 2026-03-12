@@ -1,10 +1,9 @@
-To-do list:
-Frontend: 
+To-do list(2026-03-12):
+Frontend+backend: 
     1- Soldaki menü hamburger menü olarak genişleyebilir olmalı.
-    2- Soldaki menü içinde hosts'a tıkladığımda sağda table veya grid seçimli şekilde sadece hosts listesi görmeliyim. Bu hosts listesinde bir host u genişlettiğimde ise o hosttaki rolleri görmeliyim, ve bu rollere ait, stop, start, restart,
- view logs butonlarını görmeliyim.
+    2- Soldaki menü içinde hosts'a tıkladığımda sağda table veya grid seçimli şekilde sadece hosts listesi görmeliyim. Bu hosts listesinde bir host u genişlettiğimde ise o hosttaki rolleri görmeliyim, ve bu rollere ait, stop, start, restart, view logs butonlarını görmeliyim.
     3- Arayüzdeki ismi "Kasırga" olarak değiştirelim.
     4- Versiyonlama formatını v{yyyy-MM-dd} şeklinde geliştirilen günün tarihi olarak güncelleyelim.
-    5- Host view de her host'un yanında bir de edit butonu olsun.  Bu edit butonunda o host üstündeki monitor edilecek servis isimlerini, log dosya yolunu vb. düzenleyip kaydedebilmeliyim.
+    5- Host view de her host'un yanında bir de edit/düzenle butonu olsun.  Bu edit butonunda o host üstündeki monitor edilecek servis isimlerini, log dosya yolunu vb. düzenleyip kaydedebilmeliyim. Ayrıca doris için de "jump host" check box'ı olsun, o işaretlendiğinde de jump host girebilmeliyim.
     6- Ayrıca hosts ekranında "host ekleme ve host silme" butonları olmalı, host ekle butonunda da yine yaml da verdiğimiz parametrelerle bir host ekleyebilmeliyim. Orada servisler dropdown ile seçimle gelebilir.
     
