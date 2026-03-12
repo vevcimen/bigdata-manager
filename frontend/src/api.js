@@ -23,6 +23,9 @@ export const getService  = (name) => request(`/services/${encodeURIComponent(nam
 // ── Hosts ────────────────────────────────────────────────────────────────────
 export const getHosts = () => request('/hosts')
 export const getHost  = (hostname) => request(`/hosts/${encodeURIComponent(hostname)}`)
+export const createHost = (data) => request('/hosts', { method: 'POST', body: JSON.stringify(data) })
+export const updateHost = (id, data) => request(`/hosts/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteHost = (id) => request(`/hosts/${id}`, { method: 'DELETE' })
 
 // ── Daemons ──────────────────────────────────────────────────────────────────
 export const getDaemons    = (serviceName) =>

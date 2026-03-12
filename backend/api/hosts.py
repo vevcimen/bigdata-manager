@@ -1,18 +1,45 @@
 """
-Host ve servis listeleme API'si.
+Host ve servis listeleme / CRUD API'si.
 
-GET /api/services                     → Tüm servisler + host/daemon özeti
-GET /api/services/{service_name}      → Tek servis detay
-GET /api/hosts                        → Tüm host'lar
-GET /api/hosts/{hostname}             → Host detayı + daemon'lar
+GET    /api/services                     → Tüm servisler + host/daemon özeti
+GET    /api/services/{service_name}      → Tek servis detay
+GET    /api/hosts                        → Tüm host'lar
+GET    /api/hosts/{hostname}             → Host detayı + daemon'lar
+POST   /api/hosts                        → Yeni host ekle
+PUT    /api/hosts/{host_id}              → Host güncelle
+DELETE /api/hosts/{host_id}              → Host sil
 """
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional, List
 from sqlalchemy.orm import Session
 
 from ..db.models import Service, Host, Daemon
 from .deps import get_db
 
 router = APIRouter(tags=["hosts"])
+
+
+# ─── Pydantic modeller ────────────────────────────────────────────────────────
+
+class DaemonInput(BaseModel):
+    daemon_type: str
+    systemctl_name: str
+    log_path: Optional[str] = None
+
+class HostCreate(BaseModel):
+    hostname: str
+    ip: Optional[str] = None
+    service_name: str
+    jump_via: Optional[str] = None
+    daemons: Optional[List[DaemonInput]] = []
+
+class HostUpdate(BaseModel):
+    hostname: Optional[str] = None
+    ip: Optional[str] = None
+    service_name: Optional[str] = None
+    jump_via: Optional[str] = None
+    daemons: Optional[List[DaemonInput]] = None
 
 
 # ─── /api/services ────────────────────────────────────────────────────────────
@@ -36,7 +63,7 @@ def get_service(service_name: str, db: Session = Depends(get_db)):
 @router.get("/api/hosts")
 def list_hosts(db: Session = Depends(get_db)):
     hosts = db.query(Host).all()
-    return [_host_to_dict(h, full=False) for h in hosts]
+    return [_host_to_dict(h, full=True) for h in hosts]
 
 
 @router.get("/api/hosts/{hostname}")
@@ -45,6 +72,79 @@ def get_host(hostname: str, db: Session = Depends(get_db)):
     if not host:
         raise HTTPException(status_code=404, detail="Host bulunamadı")
     return _host_to_dict(host, full=True)
+
+
+@router.post("/api/hosts", status_code=201)
+def create_host(body: HostCreate, db: Session = Depends(get_db)):
+    svc = db.query(Service).filter_by(name=body.service_name).first()
+    if not svc:
+        raise HTTPException(status_code=404, detail=f"Servis bulunamadı: {body.service_name}")
+    existing = db.query(Host).filter_by(hostname=body.hostname, service_id=svc.id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Bu host zaten mevcut: {body.hostname}")
+    host = Host(
+        hostname=body.hostname,
+        ip=body.ip,
+        service_id=svc.id,
+        jump_via=body.jump_via,
+    )
+    db.add(host)
+    db.flush()
+    for d in (body.daemons or []):
+        daemon = Daemon(
+            host_id=host.id,
+            service_id=svc.id,
+            daemon_type=d.daemon_type,
+            systemctl_name=d.systemctl_name,
+            log_path=d.log_path,
+        )
+        db.add(daemon)
+    db.commit()
+    db.refresh(host)
+    return _host_to_dict(host, full=True)
+
+
+@router.put("/api/hosts/{host_id}")
+def update_host(host_id: int, body: HostUpdate, db: Session = Depends(get_db)):
+    host = db.query(Host).filter_by(id=host_id).first()
+    if not host:
+        raise HTTPException(status_code=404, detail="Host bulunamadı")
+    if body.hostname is not None:
+        host.hostname = body.hostname
+    if body.ip is not None:
+        host.ip = body.ip
+    if body.jump_via is not None:
+        host.jump_via = body.jump_via if body.jump_via else None
+    if body.service_name is not None:
+        svc = db.query(Service).filter_by(name=body.service_name).first()
+        if not svc:
+            raise HTTPException(status_code=404, detail=f"Servis bulunamadı: {body.service_name}")
+        host.service_id = svc.id
+    if body.daemons is not None:
+        # Mevcut daemon'ları sil ve yenilerini ekle
+        db.query(Daemon).filter_by(host_id=host.id).delete()
+        for d in body.daemons:
+            daemon = Daemon(
+                host_id=host.id,
+                service_id=host.service_id,
+                daemon_type=d.daemon_type,
+                systemctl_name=d.systemctl_name,
+                log_path=d.log_path,
+            )
+            db.add(daemon)
+    db.commit()
+    db.refresh(host)
+    return _host_to_dict(host, full=True)
+
+
+@router.delete("/api/hosts/{host_id}")
+def delete_host(host_id: int, db: Session = Depends(get_db)):
+    host = db.query(Host).filter_by(id=host_id).first()
+    if not host:
+        raise HTTPException(status_code=404, detail="Host bulunamadı")
+    db.delete(host)
+    db.commit()
+    return {"status": "deleted", "id": host_id}
 
 
 # ─── Yardımcılar ──────────────────────────────────────────────────────────────

@@ -50,9 +50,9 @@ def _load_cfg() -> configparser.ConfigParser:
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="BigData Manager API",
+    title="Kasırga API",
     description="Büyük veri ortamı servis ve daemon yönetim API'si",
-    version="1.0.0",
+    version="v2026-03-12",
 )
 
 app.add_middleware(
@@ -125,4 +125,4 @@ def health():
 
 @app.get("/api/version", tags=["system"])
 def version():
-    return {"version": "1.0.0", "name": "BigData Manager"}
+    return {"version": "v2026-03-12", "name": "Kasırga"}

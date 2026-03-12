@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const NAV = [
   {
     label: 'GENEL',
@@ -10,8 +12,8 @@ const NAV = [
     label: 'YÖNETİM',
     items: [
       { id: 'services',  label: 'Servisler',  icon: IconServices },
-      { id: 'hosts',     label: 'Host\'lar',   icon: IconHosts },
-      { id: 'daemons',   label: 'Daemon\'lar', icon: IconDaemon },
+      { id: 'hosts',     label: "Host'lar",   icon: IconHosts },
+      { id: 'daemons',   label: "Daemon'lar", icon: IconDaemon },
     ]
   },
   {
@@ -29,26 +31,39 @@ const NAV = [
 ]
 
 export default function Sidebar({ page, onNavigate, unreadCount, backendOk }) {
+  const [collapsed, setCollapsed] = useState(false)
+
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="sidebar-logo">
         <IconLayers />
-        BigData Manager
+        {!collapsed && <span>Kasırga</span>}
+        <button
+          className="sidebar-toggle"
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? 'Menüyü genişlet' : 'Menüyü daralt'}
+        >
+          {collapsed ? <IconMenuOpen /> : <IconMenuClose />}
+        </button>
       </div>
 
       {NAV.map(section => (
         <div key={section.label} className="sidebar-section">
-          <div className="sidebar-label">{section.label}</div>
+          {!collapsed && <div className="sidebar-label">{section.label}</div>}
           {section.items.map(item => (
             <div
               key={item.id}
               className={`sidebar-item${page === item.id ? ' active' : ''}`}
               onClick={() => onNavigate(item.id)}
+              title={collapsed ? item.label : undefined}
             >
               <item.icon />
-              {item.label}
-              {item.badge && unreadCount > 0 && (
+              {!collapsed && item.label}
+              {!collapsed && item.badge && unreadCount > 0 && (
                 <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+              {collapsed && item.badge && unreadCount > 0 && (
+                <span className="badge badge-dot" />
               )}
             </div>
           ))}
@@ -56,8 +71,14 @@ export default function Sidebar({ page, onNavigate, unreadCount, backendOk }) {
       ))}
 
       <div className="sidebar-footer">
-        <div>BigData Manager</div>
-        <div className="version">v1.0.0</div>
+        {!collapsed ? (
+          <>
+            <div>Kasırga</div>
+            <div className="version">v2026-03-12</div>
+          </>
+        ) : (
+          <div className="version" style={{ textAlign: 'center' }}>v</div>
+        )}
       </div>
     </nav>
   )
@@ -71,6 +92,26 @@ function IconLayers() {
       <polygon points="12 2 2 7 12 12 22 7 12 2"/>
       <polyline points="2 17 12 22 22 17"/>
       <polyline points="2 12 12 17 22 12"/>
+    </svg>
+  )
+}
+
+function IconMenuOpen() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  )
+}
+
+function IconMenuClose() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <line x1="3" y1="18" x2="21" y2="18"/>
     </svg>
   )
 }

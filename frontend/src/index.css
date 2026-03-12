@@ -70,6 +70,11 @@ input, select, textarea { font-family: inherit; }
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 10;
+  transition: width 0.2s, min-width 0.2s;
+}
+.sidebar-collapsed {
+  width: 56px;
+  min-width: 56px;
 }
 .sidebar-logo {
   padding: 16px 20px;
@@ -82,7 +87,28 @@ input, select, textarea { font-family: inherit; }
   gap: 10px;
   user-select: none;
 }
+.sidebar-collapsed .sidebar-logo {
+  padding: 16px 12px;
+  justify-content: center;
+  gap: 0;
+}
 .sidebar-logo svg { flex-shrink: 0; }
+.sidebar-toggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-toggle:hover { background: var(--hover); color: var(--text); }
+.sidebar-collapsed .sidebar-toggle {
+  margin-left: 0;
+}
 .sidebar-section { padding: 8px 0; }
 .sidebar-label {
   font-size: 10px;
@@ -102,6 +128,17 @@ input, select, textarea { font-family: inherit; }
   border-left: 3px solid transparent;
   transition: all 0.15s;
   user-select: none;
+  position: relative;
+}
+.sidebar-collapsed .sidebar-item {
+  padding: 10px 0;
+  justify-content: center;
+  gap: 0;
+  border-left: none;
+}
+.sidebar-collapsed .sidebar-item.active {
+  border-left: none;
+  background: var(--bg-secondary);
 }
 .sidebar-item:hover { background: var(--hover); color: var(--text); }
 .sidebar-item.active {
@@ -110,6 +147,7 @@ input, select, textarea { font-family: inherit; }
   border-left-color: var(--accent);
 }
 .sidebar-item svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.75; }
+.sidebar-collapsed .sidebar-item svg { width: 18px; height: 18px; }
 .sidebar-item.active svg { opacity: 1; }
 .sidebar-item .badge {
   margin-left: auto;
@@ -122,6 +160,18 @@ input, select, textarea { font-family: inherit; }
   min-width: 18px;
   text-align: center;
 }
+.sidebar-item .badge-dot {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-left: 0;
+}
 .sidebar-footer {
   margin-top: auto;
   padding: 12px 20px;
@@ -129,6 +179,7 @@ input, select, textarea { font-family: inherit; }
   font-size: 11px;
   color: var(--text-subtle);
 }
+.sidebar-collapsed .sidebar-footer { padding: 12px 8px; }
 .sidebar-footer .version { color: var(--accent); }
 
 /* ── Main content ── */

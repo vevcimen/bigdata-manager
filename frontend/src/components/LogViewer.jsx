@@ -1,23 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { openLogStream } from '../api.js'
 
 export default function LogViewer({ daemonId, daemonName }) {
-  const [lines, setLines]       = useState([])
+  const [lines, setLines]         = useState([])
   const [connected, setConnected] = useState(false)
-  const [error, setError]       = useState(null)
+  const [error, setError]         = useState(null)
   const bottomRef = useRef(null)
   const esRef     = useRef(null)
+  const retryRef  = useRef(null)
 
-  useEffect(() => {
+  const connect = useCallback(() => {
     if (!daemonId) return
-    setLines([])
+    // Önceki bağlantıyı temizle
+    if (esRef.current) {
+      esRef.current.close()
+      esRef.current = null
+    }
+    if (retryRef.current) {
+      clearTimeout(retryRef.current)
+      retryRef.current = null
+    }
+
     setError(null)
     setConnected(false)
 
     const es = openLogStream(daemonId, 200)
     esRef.current = es
 
-    es.onopen = () => setConnected(true)
+    es.onopen = () => {
+      setConnected(true)
+      setError(null)
+    }
 
     es.onmessage = (evt) => {
       const line = evt.data
@@ -28,18 +41,36 @@ export default function LogViewer({ daemonId, daemonName }) {
     }
 
     es.onerror = () => {
-      setError('Log akışı kesildi.')
       setConnected(false)
       es.close()
+      esRef.current = null
+      // 3 saniye sonra otomatik yeniden bağlan
+      setError('Log akışı kesildi. Yeniden bağlanılıyor...')
+      retryRef.current = setTimeout(() => {
+        connect()
+      }, 3000)
     }
-
-    return () => { es.close() }
   }, [daemonId])
+
+  useEffect(() => {
+    setLines([])
+    connect()
+
+    return () => {
+      if (esRef.current) esRef.current.close()
+      if (retryRef.current) clearTimeout(retryRef.current)
+    }
+  }, [connect])
 
   // Auto-scroll to bottom on new lines
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [lines])
+
+  function handleRefresh() {
+    setLines([])
+    connect()
+  }
 
   function classifyLine(line) {
     const low = line.toLowerCase()
@@ -67,17 +98,33 @@ export default function LogViewer({ daemonId, daemonName }) {
             </span>
           )}
         </div>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setLines([])}
-        >
-          Temizle
-        </button>
+        <div className="btn-group">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleRefresh}
+            title="Yeniden bağlan"
+          >
+            ↻ Yenile
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setLines([])}
+          >
+            Temizle
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="error-banner" style={{ marginBottom: 8 }}>
-          ⚠ {error}
+          {error}
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ marginLeft: 'auto' }}
+            onClick={handleRefresh}
+          >
+            ↻ Şimdi Bağlan
+          </button>
         </div>
       )}
 
