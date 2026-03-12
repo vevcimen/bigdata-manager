@@ -1,4 +1,4 @@
-# BigData Manager — Kurulum Kılavuzu (CentOS 8.x)
+# Kasırga — Kurulum Kılavuzu (CentOS 8.x)
 
 ## Gereksinimler
 # test
@@ -145,7 +145,90 @@ npm run dev
 
 ---
 
-## 8. Uygulamayı Başlatma
+## 8. Sunucuya Deploy (Air-Gapped Ortam)
+
+Hedef sunucu kapalı ağda (air-gapped) olduğundan, geliştirme ortamında her şey hazırlanıp dosyalar elle taşınır.
+
+### Geliştirme Ortamında Hazırlık
+
+```bash
+# 1. Frontend'i build et (Node.js gerekli — sadece geliştirme makinesinde)
+cd frontend
+npm install
+npm run build    # → ../frontend-dist/ dizinine yazar
+cd ..
+
+# 2. Build çıktısını doğrula
+ls frontend-dist/
+# index.html, assets/index-*.js, assets/index-*.css dosyaları olmalı
+```
+
+### Sunucuya Taşınması Gereken Dosyalar
+
+```
+bigdata-manager/
+├── backend/                 # Python backend (FastAPI) — ZORUNLU
+├── frontend-dist/           # Build edilmiş React UI — ZORUNLU
+├── cluster_manager.cfg      # Konfigürasyon — ZORUNLU (sunucuya özel değerleri düzenle)
+├── topology.yaml            # Cluster topoloji tanımı — ZORUNLU (gerçek host bilgileri)
+├── frontend/                # Kaynak kod — OPSİYONEL (sunucuda değişiklik yapılmayacaksa gerekmez)
+├── CHANGELOG.md             # İş günlüğü — OPSİYONEL
+└── INSTALL.md               # Bu dosya — OPSİYONEL
+```
+
+> **Not:** `frontend/` dizini sunucuda çalışmak için gerekli değildir. Sunucuda Node.js/npm yoktur.
+> Tüm frontend kodu `frontend-dist/` içinde önceden derlenmiş haldedir.
+
+### Sunucuya Aktarım
+
+```bash
+# Yöntem 1: scp ile (ağ erişimi varsa)
+scp -r backend/ frontend-dist/ cluster_manager.cfg topology.yaml \
+    cm_user@<SUNUCU_IP>:/opt/bigdata-manager/
+
+# Yöntem 2: tar ile paketleyip USB/dosya transferi
+tar czf kasirga-v2026-03-12.tar.gz \
+    backend/ frontend-dist/ cluster_manager.cfg topology.yaml \
+    INSTALL.md CHANGELOG.md
+# → kasirga-v2026-03-12.tar.gz dosyasını sunucuya taşı
+
+# Sunucuda aç
+cd /opt/bigdata-manager
+tar xzf kasirga-v2026-03-12.tar.gz
+```
+
+### Sunucuda İlk Kurulum (Sadece bir kez)
+
+```bash
+# Python venv oluştur
+cd /opt/bigdata-manager
+python3.9 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+
+# Konfigürasyonu düzenle (gerçek DB, SSH bilgileri)
+vi cluster_manager.cfg
+vi topology.yaml
+```
+
+### Güncelleme Döngüsü
+
+Sonraki deploy'larda sadece değişen dizinleri taşımak yeterlidir:
+
+```bash
+# Geliştirme makinesinde: frontend değişikliği varsa yeniden build et
+cd frontend && npm run build && cd ..
+
+# Sunucuya sadece değişenleri kopyala
+scp -r backend/ frontend-dist/ cm_user@<SUNUCU_IP>:/opt/bigdata-manager/
+
+# Sunucuda servisi yeniden başlat
+ssh cm_user@<SUNUCU_IP> "sudo systemctl restart kasirga"
+```
+
+---
+
+## 9. Uygulamayı Başlatma
 
 ```bash
 # Ortam değişkeni (opsiyonel, varsayılan: ./cluster_manager.cfg)
@@ -162,9 +245,9 @@ nohup uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 2 &
 ### systemd ile Başlatma (Önerilen)
 
 ```ini
-# /etc/systemd/system/bigdata-manager.service
+# /etc/systemd/system/kasirga.service
 [Unit]
-Description=BigData Manager API
+Description=Kasırga API
 After=network.target mysqld.service
 
 [Service]
@@ -182,12 +265,12 @@ WantedBy=multi-user.target
 
 ```bash
 systemctl daemon-reload
-systemctl enable --now bigdata-manager
+systemctl enable --now kasirga
 ```
 
 ---
 
-## 8. Arayüze Erişim
+## 10. Arayüze Erişim
 
 ### A) Sunucu Aynı Ağdaysa (VPN / iç ağ)
 
@@ -235,7 +318,10 @@ Standalone (backend olmadan): `standalone.html` dosyasını çift tıklayarak a�
 | GET | /api/health | Sağlık kontrolü |
 | GET | /api/services | Tüm servisler |
 | GET | /api/services/{name} | Servis detayı |
-| GET | /api/hosts | Tüm host'lar |
+| GET | /api/hosts | Tüm host'lar (daemon bilgileri dahil) |
+| POST | /api/hosts | Yeni host ekle |
+| PUT | /api/hosts/{id} | Host güncelle |
+| DELETE | /api/hosts/{id} | Host sil |
 | GET | /api/daemons | Tüm daemon'lar |
 | POST | /api/daemons/{id}/start | Daemon başlat |
 | POST | /api/daemons/{id}/stop | Daemon durdur |
