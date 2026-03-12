@@ -1,4 +1,4 @@
-To-do list(2026-03-12):
+To-do list(Hakki-2026-03-12):
 Frontend+backend: 
     1- Soldaki menü hamburger menü olarak genişleyebilir olmalı.
     2- Soldaki menü içinde hosts'a tıkladığımda sağda table veya grid seçimli şekilde sadece hosts listesi görmeliyim. Bu hosts listesinde bir host u genişlettiğimde ise o hosttaki rolleri görmeliyim, ve bu rollere ait, stop, start, restart, view logs butonlarını görmeliyim.
