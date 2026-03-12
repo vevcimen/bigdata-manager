@@ -9,12 +9,9 @@ Frontend+backend:
         * namenode ekranındaki Overview tabındaki Summary kısmı görünmeli.
         * HDFS'e ait başka metriklerin historik grafikleri de olabilir.
       Spark'lar için:
-        * Spark master ekranındaki running applications görünmeli.
+        * Spark master ekranındaki running applications görünmeli. Ve ayrıca finished son 10 application görünebilir.
       Trino'lar için:
-        * Trino queries görünmeli. Yani running query'ler ve progress'leri görünmeli. 
+        * Trino queries görünmeli. Yani running query'ler ve progress'leri canlı görünmeli. 
       Airflow için:
         * Running dag'ların bir listesi olmalı.
-      Bu maddelerin bazıları (örn:trino ve airflow) için otantikasyon gerekebilir, servis kullanıcı bilgilerini (username/password) servis ekleme/düzeltme mekanizmasında arayüzde istemelisin.
-
-      
-    
+      Bu maddelerin bazıları (örn:trino ve airflow) için otantikasyon ve başkaca ihtiyacın olabilecek ayarlar gerekebilir, servis kullanıcı bilgilerini (username/password) ve başkaca ayarları servis ekleme/düzeltme mekanizmasında arayüzde kullanıcıdan istemelisin.
