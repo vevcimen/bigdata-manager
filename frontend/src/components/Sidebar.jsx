@@ -26,11 +26,12 @@ const NAV = [
     label: 'SİSTEM',
     items: [
       { id: 'diagnostics', label: 'Diagnostics', icon: IconDiag },
+      { id: 'users', label: 'Kullanıcılar', icon: IconUsers },
     ]
   },
 ]
 
-export default function Sidebar({ page, onNavigate, unreadCount, backendOk }) {
+export default function Sidebar({ page, onNavigate, unreadCount, backendOk, user, onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -73,11 +74,47 @@ export default function Sidebar({ page, onNavigate, unreadCount, backendOk }) {
       <div className="sidebar-footer">
         {!collapsed ? (
           <>
+            {user && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <IconUser />
+                  <span style={{ fontSize: 12, color: 'var(--text)' }}>{user.username}</span>
+                </div>
+                <button
+                  onClick={onLogout}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--text-muted)',
+                    cursor: 'pointer', padding: '2px 6px', borderRadius: 4, fontSize: 11,
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.target.style.color = 'var(--danger)'; e.target.style.background = 'rgba(248,81,73,0.1)' }}
+                  onMouseLeave={e => { e.target.style.color = 'var(--text-muted)'; e.target.style.background = 'none' }}
+                  title="Çıkış yap"
+                >
+                  Çıkış
+                </button>
+              </div>
+            )}
             <div>Kasırga</div>
             <div className="version">v2026-03-12</div>
           </>
         ) : (
-          <div className="version" style={{ textAlign: 'center' }}>v</div>
+          <div style={{ textAlign: 'center' }}>
+            {user && (
+              <button
+                onClick={onLogout}
+                style={{
+                  background: 'none', border: 'none', color: 'var(--text-muted)',
+                  cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px',
+                }}
+                title="Çıkış yap"
+              >
+                <IconLogout />
+              </button>
+            )}
+            <div className="version">v</div>
+          </div>
         )}
       </div>
     </nav>
@@ -181,6 +218,36 @@ function IconDiag() {
       <circle cx="12" cy="12" r="10"/>
       <line x1="12" y1="8" x2="12" y2="12"/>
       <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  )
+}
+
+function IconUsers() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  )
+}
+
+function IconUser() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  )
+}
+
+function IconLogout() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>
   )
 }

@@ -7,7 +7,9 @@ import DaemonsPage from './pages/DaemonsPage.jsx'
 import MetricsPage from './pages/MetricsPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import DiagnosticsPage from './pages/DiagnosticsPage.jsx'
-import { getUnreadCount } from './api.js'
+import LoginPage from './pages/LoginPage.jsx'
+import UserManagement from './pages/UserManagement.jsx'
+import { getUnreadCount, getToken, setToken, getMe } from './api.js'
 
 const PAGE_TITLES = {
   dashboard:     { title: 'Dashboard',      sub: 'Genel durum özeti' },
@@ -17,6 +19,7 @@ const PAGE_TITLES = {
   metrics:       { title: 'Metrikler',      sub: 'CPU, bellek, disk istatistikleri' },
   notifications: { title: 'Bildirimler',    sub: 'Sistem uyarıları ve olaylar' },
   diagnostics:   { title: 'Diagnostics',    sub: 'Sorun giderme ve sistem durumu' },
+  users:         { title: 'Kullanıcılar',   sub: 'Kullanıcı yönetimi' },
 }
 
 export default function App() {
@@ -24,8 +27,29 @@ export default function App() {
   const [unreadCount,     setUnreadCount]     = useState(0)
   const [selectedService, setSelectedService] = useState(null)
   const [backendOk,       setBackendOk]       = useState(true)
+  const [user,            setUser]            = useState(null)
+  const [authChecked,     setAuthChecked]     = useState(false)
+
+  // Check existing token on mount
+  useEffect(() => {
+    const token = getToken()
+    if (token) {
+      getMe().then(u => { setUser(u); setAuthChecked(true) })
+        .catch(() => { setToken(null); setAuthChecked(true) })
+    } else {
+      setAuthChecked(true)
+    }
+  }, [])
+
+  // Listen for auth-expired events
+  useEffect(() => {
+    function onExpired() { setUser(null) }
+    window.addEventListener('auth-expired', onExpired)
+    return () => window.removeEventListener('auth-expired', onExpired)
+  }, [])
 
   const fetchUnread = useCallback(async () => {
+    if (!user) return
     try {
       const data = await getUnreadCount()
       setUnreadCount(data.count ?? 0)
@@ -33,18 +57,37 @@ export default function App() {
     } catch {
       setBackendOk(false)
     }
-  }, [])
+  }, [user])
 
   useEffect(() => {
+    if (!user) return
     fetchUnread()
     const interval = setInterval(fetchUnread, 30_000)
     return () => clearInterval(interval)
-  }, [fetchUnread])
+  }, [fetchUnread, user])
 
   function navigate(target, extra) {
     setPage(target)
     if (extra?.service) setSelectedService(extra.service)
     else setSelectedService(null)
+  }
+
+  function handleLogout() {
+    setToken(null)
+    setUser(null)
+    setPage('dashboard')
+  }
+
+  if (!authChecked) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div className="spinner" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={u => setUser(u)} />
   }
 
   const meta = PAGE_TITLES[page] || { title: page, sub: '' }
@@ -56,6 +99,8 @@ export default function App() {
         onNavigate={navigate}
         unreadCount={unreadCount}
         backendOk={backendOk}
+        user={user}
+        onLogout={handleLogout}
       />
       <div className="main">
         <div className="topbar">
@@ -81,6 +126,9 @@ export default function App() {
                 <span>Canlı</span>
               </div>
             )}
+            <div style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>
+              {user.username}
+            </div>
           </div>
         </div>
         <div className="content">
@@ -91,6 +139,7 @@ export default function App() {
           {page === 'metrics'       && <MetricsPage />}
           {page === 'notifications' && <NotificationsPage onUnreadChange={setUnreadCount} />}
           {page === 'diagnostics'   && <DiagnosticsPage />}
+          {page === 'users'         && <UserManagement currentUser={user} />}
         </div>
       </div>
     </div>

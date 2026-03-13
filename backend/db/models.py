@@ -96,6 +96,18 @@ class MetricSnapshot(Base):
     ts          = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class User(Base):
+    """Kullanıcı tablosu (login/auth)"""
+    __tablename__ = "users"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    username    = Column(String(64), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    role        = Column(String(32), default="admin")  # admin / viewer
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Notification(Base):
     """Bildirim merkezi"""
     __tablename__ = "notifications"

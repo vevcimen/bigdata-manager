@@ -6,7 +6,8 @@ services/hosts/daemons tablolarını doldurur.
 import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from .models import Base, Service, Host, Daemon
+from passlib.hash import bcrypt
+from .models import Base, Service, Host, Daemon, User
 
 log = logging.getLogger(__name__)
 
@@ -22,19 +23,40 @@ def get_engine(cfg):
 
 
 def init_database(engine, topology: dict):
-    """Tabloları oluştur, topology sync et."""
+    """
+    Tabloları oluştur.
+    Sadece DB'de hiç servis yoksa (ilk kurulum) topology.yaml'dan sync et.
+    Normal restart'larda DB'deki configler korunur.
+    """
     Base.metadata.create_all(engine)
     log.info("DB tabloları kontrol edildi / oluşturuldu.")
 
     Session = sessionmaker(bind=engine)
     session = Session()
     try:
-        _sync_topology(session, topology)
-        session.commit()
-        log.info("Topology senkronizasyonu tamamlandı.")
+        existing_count = session.query(Service).count()
+        if existing_count == 0:
+            log.info("DB boş — topology.yaml'dan ilk yükleme yapılıyor…")
+            _sync_topology(session, topology)
+            session.commit()
+            log.info("Topology senkronizasyonu tamamlandı.")
+        else:
+            log.info(f"DB'de {existing_count} servis mevcut — topology.yaml atlanıyor, DB configleri kullanılacak.")
+
+        # Default admin kullanıcı yoksa oluştur
+        admin = session.query(User).filter_by(username="admin").first()
+        if not admin:
+            admin = User(
+                username="admin",
+                password_hash=bcrypt.hash("admin"),
+                role="admin",
+            )
+            session.add(admin)
+            session.commit()
+            log.info("Default admin kullanıcı oluşturuldu (admin/admin).")
     except Exception as e:
         session.rollback()
-        log.error(f"Topology sync hatası: {e}")
+        log.error(f"DB init hatası: {e}")
         raise
     finally:
         session.close()

@@ -18,11 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from .core.topology import load_topology
 from .db.init_db    import get_engine, init_database
 from .api           import deps
+from .api.auth         import router as auth_router
 from .api.daemons       import router as daemons_router
 from .api.metrics       import router as metrics_router
 from .api.hosts         import router as hosts_router
 from .api.notifications import router as notif_router
 from .api.diag          import router as diag_router
+from .api.service_detail import router as svc_detail_router
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -63,11 +65,13 @@ app.add_middleware(
 )
 
 # API router'ları
+app.include_router(auth_router)
 app.include_router(daemons_router)
 app.include_router(metrics_router)
 app.include_router(hosts_router)
 app.include_router(notif_router)
 app.include_router(diag_router)
+app.include_router(svc_detail_router)
 
 # React frontend dist klasörü (npm run build sonrası oluşur)
 # Yoksa standalone.html'i kök dizinden sun (fallback)
@@ -90,9 +94,13 @@ async def on_startup():
     if cfg.has_option("general", "log_level"):
         logging.getLogger().setLevel(cfg.get("general", "log_level").upper())
 
-    # Topology
+    # Topology (opsiyonel — dosya yoksa boş topology ile devam et)
     topo_file = cfg.get("general", "topology_file") if cfg.has_option("general", "topology_file") else "topology.yaml"
-    topology  = load_topology(topo_file)
+    try:
+        topology = load_topology(topo_file)
+    except FileNotFoundError:
+        log.warning(f"Topology dosyası bulunamadı: {topo_file} — DB'deki mevcut configler kullanılacak.")
+        topology = {"services": []}
 
     # DB
     engine = get_engine(cfg)

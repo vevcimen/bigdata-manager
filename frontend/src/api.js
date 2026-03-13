@@ -1,10 +1,22 @@
 const BASE = '/api'
 
+export function getToken() {
+  return localStorage.getItem('kasirga_token')
+}
+export function setToken(token) {
+  if (token) localStorage.setItem('kasirga_token', token)
+  else localStorage.removeItem('kasirga_token')
+}
+
 async function request(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  })
+  const token = getToken()
+  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(BASE + path, { headers, ...options })
+  if (res.status === 401) {
+    setToken(null)
+    window.dispatchEvent(new Event('auth-expired'))
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`HTTP ${res.status}: ${text || res.statusText}`)
@@ -16,9 +28,39 @@ async function request(path, options = {}) {
 export const getHealth   = () => request('/health')
 export const getVersion  = () => request('/version')
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
+export const login = (username, password) =>
+  request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+export const getMe = () => request('/auth/me')
+export const getUsers = () => request('/auth/users')
+export const createUser = (data) => request('/auth/users', { method: 'POST', body: JSON.stringify(data) })
+export const updateUser = (id, data) => request(`/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteUser = (id) => request(`/auth/users/${id}`, { method: 'DELETE' })
+
 // ── Services ────────────────────────────────────────────────────────────────
 export const getServices = () => request('/services')
 export const getService  = (name) => request(`/services/${encodeURIComponent(name)}`)
+export const createService = (data) => request('/services', { method: 'POST', body: JSON.stringify(data) })
+export const updateService = (id, data) => request(`/services/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+export const deleteService = (id) => request(`/services/${id}`, { method: 'DELETE' })
+
+// ── Topology Export ──────────────────────────────────────────────────────────
+export const exportTopology = async () => {
+  const token = getToken()
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
+  const res = await fetch(BASE + '/topology/export', { headers })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'topology.yaml'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ── Service Detail ───────────────────────────────────────────────────────────
+export const getServiceDetail = (name) => request(`/services/${encodeURIComponent(name)}/detail`)
 
 // ── Hosts ────────────────────────────────────────────────────────────────────
 export const getHosts = () => request('/hosts')
