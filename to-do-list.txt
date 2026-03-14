@@ -1,17 +1,8 @@
-To-do list(Hakki-2026-03-13):
+To-do list(Hakki-2026-03-14):
 Frontend+backend: 
-    1- Her restart da topology yaml dan configler alınmamalı, ilk db initialization'i olacak ise, sadece o durumda topoloji bilgisi topology.yaml dan alınabilir. Onun dışındaki normal restart lar da db deki configler kullanılmalı. 
-    2- Ayrıca db configlerini topology.yaml olarak export etme yöntemi arayüze konulmalı.
-    3- Arayüzde giriş için login/logout mekanizması olmalı. Default giriş için admin/admin kullanıcı ve şifresi kullanılsın, girdikten sonra admin kullanıcısı da dahil şifre değiştirlebilen user management menüsü olmalı. (sağda olabilir)
-    4- Ekranda servisler için de servis ekleme, düzeltme vs olmalı. Bir servise tıkladığımda; sağda şunlar çıkmalı:
-      HDFS'ler için:
-        * Historik hdfs doluluğu grafiği olmalı.
-        * namenode ekranındaki Overview tabındaki Summary kısmı görünmeli.
-        * HDFS'e ait başka metriklerin historik grafikleri de olabilir.
-      Spark'lar için:
-        * Spark master ekranındaki running applications görünmeli. Ve ayrıca finished son 10 application görünebilir.
-      Trino'lar için:
-        * Trino queries görünmeli. Yani running query'ler ve progress'leri canlı görünmeli. 
-      Airflow için:
-        * Running dag'ların bir listesi olmalı.
-      Bu maddelerin bazıları (örn:trino ve airflow) için otantikasyon ve başkaca ihtiyacın olabilecek ayarlar gerekebilir, servis kullanıcı bilgilerini (username/password) ve başkaca ayarları servis ekleme/düzeltme mekanizmasında arayüzde kullanıcıdan istemelisin.
+    1- Her frontend veya backend build'inde versiyonu güncel gün yapalım. v{yyyy-MM-dd} formatında.
+    2- Host ekranında düzeltme yaparken "internal server http 500" hatası veriyor ona bi bakalım.
+    3- Services den bir servise tıkladığımda orada altta görünen hosts kısmında da hosts ekranındaki gibi stop, start, restart ve log görüntüleme butonları olsun.
+    4- Log görüntüleme ekranında açılan popup'da bir satır filtresi kutucuğu olsun. Oraya yazdığım bir kelimede sanki grepliyormuşum gibi o kelimenin geçtiği satırlar gelsin sadece.
+    5- Historik hdfs doluluğu zamana bağlı olarak çizgi grafik şeklinde istiyorum. 
+    6- Spark ekranında running ve completed applications görünmüyor. O ekrana refresh ve auto refresh butonları koyalım.
