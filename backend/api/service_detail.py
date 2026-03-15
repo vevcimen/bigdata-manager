@@ -259,20 +259,22 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
     auth = (username, password) if username and password else None
     base = webui_url.rstrip("/")
 
-    # Cluster istatistikleri (/v1/cluster)
+    # Cluster istatistikleri: önce /v1/cluster, 404 alınırsa /ui/api/stats dene
     cluster = await _fetch_trino_json(base + "/v1/cluster", trino_user, auth)
+    if isinstance(cluster, dict) and "error" in cluster and "404" in cluster["error"]:
+        cluster = await _fetch_trino_json(base + "/ui/api/stats", trino_user, auth)
     if isinstance(cluster, dict) and "error" not in cluster:
         data["cluster"] = {
-            "runningQueries":         cluster.get("runningQueries", 0),
-            "blockedQueries":         cluster.get("blockedQueries", 0),
-            "queuedQueries":          cluster.get("queuedQueries", 0),
-            "activeWorkers":          cluster.get("activeWorkers", 0),
-            "runningDrivers":         cluster.get("runningDrivers", 0),
-            "reservedMemory":         cluster.get("reservedMemory", 0),
-            "totalAvailableMemory":   cluster.get("totalAvailableMemory", 0),
-            "totalInputRows":         cluster.get("totalInputRows", 0),
-            "totalInputBytes":        cluster.get("totalInputBytes", 0),
-            "totalCpuTimeSecs":       cluster.get("totalCpuTimeSecs", 0),
+            "runningQueries":       cluster.get("runningQueries", 0),
+            "blockedQueries":       cluster.get("blockedQueries", 0),
+            "queuedQueries":        cluster.get("queuedQueries", 0),
+            "activeWorkers":        cluster.get("activeWorkers", 0),
+            "runningDrivers":       cluster.get("runningDrivers", 0),
+            "reservedMemory":       cluster.get("reservedMemory", 0),
+            "totalAvailableMemory": cluster.get("totalAvailableMemory", 0),
+            "totalInputRows":       cluster.get("totalInputRows", 0),
+            "totalInputBytes":      cluster.get("totalInputBytes", 0),
+            "totalCpuTimeSecs":     cluster.get("totalCpuTimeSecs", 0),
         }
     elif isinstance(cluster, dict) and "error" in cluster:
         data["cluster_error"] = cluster["error"]
