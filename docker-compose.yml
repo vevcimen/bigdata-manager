@@ -29,7 +29,7 @@ services:
       CM_CONFIG: /app/cluster_manager.dev.cfg
       DEV_BYPASS: "1"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./backend:/app/backend        # hot reload için kaynak kod mount
       - ./topology.yaml:/app/topology.yaml
