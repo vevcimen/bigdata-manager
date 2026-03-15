@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology } from '../api.js'
+import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 const SERVICE_TYPES = ['hdfs', 'spark', 'kafka', 'trino', 'airflow', 'doris', 'mysql', 'zookeeper', 'pure_storage', 'kafka_connect']
@@ -221,7 +221,7 @@ export default function ServicesPage({ onNavigate }) {
             {/* ── Servis-spesifik detay panelleri ── */}
             {detail.type === 'hdfs' && <HdfsDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
             {detail.type === 'spark' && <SparkDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
-            {detail.type === 'trino' && <TrinoDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
+            {detail.type === 'trino' && <TrinoDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'airflow' && <AirflowDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
 
             {/* Hosts */}
@@ -489,57 +489,393 @@ function SparkDetailPanel({ detail, loading }) {
 
 // ─── Trino Detail Panel ──────────────────────────────────────────────────────
 
-function TrinoDetailPanel({ detail, loading }) {
+function TrinoDetailPanel({ detail, loading, serviceName }) {
+  const [planQuery, setPlanQuery]   = useState(null)   // query obje (satır)
+  const [planData, setPlanData]     = useState(null)   // backend'den gelen detay
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError]   = useState(null)
+
+  async function openPlan(q) {
+    setPlanQuery(q)
+    setPlanData(null)
+    setPlanError(null)
+    setPlanLoading(true)
+    try {
+      const d = await getTrinoQueryDetail(serviceName, q.queryId)
+      setPlanData(d)
+    } catch (e) {
+      setPlanError(e.message)
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
   if (loading) return <div className="loading"><div className="spinner" /> Trino verileri yükleniyor...</div>
   if (!detail?.data) return null
-  const { queries } = detail.data
+
+  const { queries, cluster, cluster_error, queries_error } = detail.data
 
   return (
-    <div className="card mb-24">
-      <div className="card-title">Trino Çalışan Sorgular ({queries?.length || 0})</div>
-      {queries?.error && <div className="error-banner" style={{ marginBottom: 12 }}>{queries.error}</div>}
-      {(!queries || queries.length === 0) ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
-          Aktif sorgu yok
+    <div>
+      {/* ── Cluster İstatistikleri ── */}
+      {cluster && Object.keys(cluster).length > 0 && (
+        <div className="card mb-24">
+          <div className="card-title">Trino Cluster Durumu</div>
+          <div className="grid-3">
+            <SummaryCard label="Çalışan Sorgular"  value={cluster.runningQueries}  accent={cluster.runningQueries > 0 ? 'accent' : 'success'} />
+            <SummaryCard label="Kuyruktaki Sorgular" value={cluster.queuedQueries} accent={cluster.queuedQueries > 0 ? 'warning' : 'success'} />
+            <SummaryCard label="Bloklu Sorgular"   value={cluster.blockedQueries}  accent={cluster.blockedQueries > 0 ? 'danger' : 'success'} />
+            <SummaryCard label="Aktif Worker"      value={cluster.activeWorkers}   accent="accent" />
+            <SummaryCard label="Çalışan Driver"    value={cluster.runningDrivers}  accent="accent" />
+            <SummaryCard label="Kullanılan Bellek" value={_fmtBytes(cluster.reservedMemory)} accent="accent" />
+          </div>
         </div>
-      ) : (
-        <div className="table-wrap" style={{ maxHeight: 400, overflowY: 'auto' }}>
-          <table>
-            <thead>
-              <tr><th>Query ID</th><th>Kullanıcı</th><th>Durum</th><th>İlerleme</th><th>Süre</th><th>Sorgu</th></tr>
-            </thead>
-            <tbody>
-              {queries.map((q, i) => (
-                <tr key={i}>
-                  <td className="td-mono" style={{ fontSize: 11 }}>{q.queryId}</td>
-                  <td>{q.user || '-'}</td>
-                  <td>
-                    <span className={`badge-status ${q.state === 'RUNNING' ? 'badge-active' : 'badge-unknown'}`}>
-                      {q.state}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-                      <div className="progress-bar-wrap" style={{ height: 6, flex: 1 }}>
-                        <div className="progress-bar low" style={{ width: `${q.progress || 0}%` }} />
-                      </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{Math.round(q.progress || 0)}%</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>
-                      {q.completedDrivers}/{q.totalDrivers} driver
-                    </div>
-                  </td>
-                  <td className="td-muted">{q.elapsedTime || '-'}</td>
-                  <td style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'var(--font-mono)' }}
-                    title={q.query}>{q.query}</td>
+      )}
+      {cluster_error && (
+        <div className="error-banner mb-24">Cluster bilgisi alınamadı: {cluster_error}</div>
+      )}
+
+      {/* ── Çalışan Sorgular ── */}
+      <div className="card mb-24">
+        <div className="card-title">Trino Çalışan Sorgular ({queries?.length || 0})</div>
+        {queries_error && <div className="error-banner" style={{ marginBottom: 12 }}>{queries_error}</div>}
+        {(!queries || queries.length === 0) ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
+            Aktif sorgu yok
+          </div>
+        ) : (
+          <div className="table-wrap" style={{ maxHeight: 480, overflowY: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Query ID</th>
+                  <th>Kullanıcı</th>
+                  <th>Kaynak</th>
+                  <th>Durum</th>
+                  <th>İlerleme</th>
+                  <th>Süre</th>
+                  <th>CPU</th>
+                  <th>Bellek</th>
+                  <th>Okunan</th>
+                  <th>Sorgu</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {queries.map((q, i) => (
+                  <tr key={i}>
+                    <td className="td-mono" style={{ fontSize: 10 }}>{q.queryId}</td>
+                    <td style={{ fontWeight: 600, fontSize: 12 }}>{q.user || '-'}</td>
+                    <td className="td-muted" style={{ fontSize: 11 }}>{q.source || '-'}</td>
+                    <td>
+                      <span className={`badge-status ${_trinoStateBadge(q.state)}`}>{q.state}</span>
+                    </td>
+                    <td style={{ minWidth: 110 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div className="progress-bar-wrap" style={{ height: 5, flex: 1 }}>
+                          <div className="progress-bar low" style={{ width: `${q.progress || 0}%` }} />
+                        </div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {Math.round(q.progress || 0)}%
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 2 }}>
+                        {q.completedDrivers}/{q.totalDrivers} drv
+                      </div>
+                    </td>
+                    <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{q.elapsedTime || '-'}</td>
+                    <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{q.cpuTime || '-'}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
+                      <div>{q.currentMemory || '0B'}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>peak: {q.peakMemory || '0B'}</div>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
+                      <div>{q.rawInputDataSize || '0B'}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>
+                        {q.rawInputPositions?.toLocaleString() || 0} satır
+                      </div>
+                    </td>
+                    <td style={{
+                      maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'var(--font-mono)',
+                    }} title={q.query}>{q.query}</td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}
+                        onClick={() => openPlan(q)}
+                      >
+                        Plan
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Sorgu Plan Modal ── */}
+      {planQuery && (
+        <TrinoQueryPlanModal
+          query={planQuery}
+          detail={planData}
+          loading={planLoading}
+          error={planError}
+          onClose={() => { setPlanQuery(null); setPlanData(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Trino Sorgu Plan Modal ───────────────────────────────────────────────────
+
+function TrinoQueryPlanModal({ query, detail, loading, error, onClose }) {
+  const [tab, setTab] = useState('stats')
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
+    }} onClick={onClose}>
+      <div style={{
+        background: 'var(--card)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)', padding: 0, width: '900px', maxWidth: '95vw',
+        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+        boxShadow: 'var(--shadow-lg)',
+      }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px', borderBottom: '1px solid var(--border)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+              Sorgu Detayı — {query.queryId}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              {query.user && <span style={{ marginRight: 12 }}>Kullanıcı: <strong>{query.user}</strong></span>}
+              {query.source && <span>Kaynak: {query.source}</span>}
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Kapat</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 20px' }}>
+          {['stats', 'sql', 'plan'].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '10px 16px',
+              fontSize: 12, fontWeight: 600, color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
+              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+              transition: 'color 0.15s',
+            }}>
+              {t === 'stats' ? 'İstatistikler' : t === 'sql' ? 'SQL' : 'Sorgu Planı'}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          {loading && <div className="loading"><div className="spinner" /> Sorgu detayı yükleniyor...</div>}
+          {error && <div className="error-banner">{error}</div>}
+
+          {!loading && !error && !detail && (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>Veri yok</div>
+          )}
+
+          {!loading && detail && tab === 'stats' && (
+            <TrinoQueryStats stats={detail.stats} warnings={detail.warnings} failureInfo={detail.failureInfo} />
+          )}
+
+          {!loading && tab === 'sql' && (
+            <pre style={{
+              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+              padding: 16, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
+            }}>
+              {detail?.query || query.query}
+            </pre>
+          )}
+
+          {!loading && detail && tab === 'plan' && (
+            <TrinoStagePlan stage={detail.outputStage} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TrinoQueryStats({ stats, warnings, failureInfo }) {
+  if (!stats) return <div style={{ color: 'var(--text-muted)' }}>İstatistik yok</div>
+
+  const rows = [
+    ['Oluşturma Zamanı',    stats.createTime],
+    ['Yürütme Başlangıcı',  stats.executionStartTime],
+    ['Toplam Süre',         stats.elapsedTime],
+    ['Kuyruk Süresi',       stats.queuedTime],
+    ['Planlama Süresi',     stats.planningTime],
+    ['CPU Süresi',          stats.totalCpuTime],
+    ['Zamanlanmış Süre',    stats.totalScheduledTime],
+    ['Bloklu Süre',         stats.totalBlockedTime],
+    ['Mevcut Bellek',       stats.userMemoryReservation],
+    ['Peak Kullanıcı Bellek', stats.peakUserMemoryReservation],
+    ['Toplam Bellek',       stats.totalMemoryReservation],
+    ['Peak Toplam Bellek',  stats.peakTotalMemoryReservation],
+    ['Ham Girdi Boyutu',    stats.rawInputDataSize],
+    ['Ham Girdi Satırı',    stats.rawInputPositions?.toLocaleString()],
+    ['Fiziksel Girdi',      stats.physicalInputDataSize],
+    ['Çıktı Boyutu',        stats.outputDataSize],
+    ['Çıktı Satırı',        stats.outputPositions?.toLocaleString()],
+    ['Dökülen Veri',        stats.spilledDataSize],
+    ['Tamamlanan Driver',   stats.completedDrivers],
+    ['Toplam Driver',       stats.totalDrivers],
+    ['İlerleme',            stats.progressPercentage != null ? `${Math.round(stats.progressPercentage)}%` : null],
+  ]
+
+  return (
+    <div>
+      <div className="card mb-16" style={{ padding: '12px 16px' }}>
+        <table style={{ width: '100%', fontSize: 12 }}>
+          <tbody>
+            {rows.filter(([, v]) => v != null && v !== '').map(([label, value], i) => (
+              <tr key={i}>
+                <td style={{ padding: '5px 0', color: 'var(--text-muted)', width: '50%', fontWeight: 500 }}>{label}</td>
+                <td style={{ padding: '5px 0', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {warnings?.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {warnings.map((w, i) => (
+            <div key={i} className="error-banner" style={{ background: 'rgba(210,153,34,0.12)', borderColor: 'var(--warning)', color: 'var(--warning)', marginBottom: 6 }}>
+              ⚠ {w.message || JSON.stringify(w)}
+            </div>
+          ))}
+        </div>
+      )}
+      {failureInfo && (
+        <div className="error-banner">
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Hata: {failureInfo.type}</div>
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{failureInfo.message}</div>
         </div>
       )}
     </div>
   )
+}
+
+function TrinoStagePlan({ stage, depth = 0 }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  if (!stage) return (
+    <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
+      Sorgu planı mevcut değil (sorgu henüz planlanmıyor olabilir)
+    </div>
+  )
+
+  const stageId  = stage.stageId || stage.plan?.id || `stage-${depth}`
+  const planRoot = stage.plan?.root
+  const children = stage.subStages || []
+  const stats    = stage.stageStats || {}
+
+  return (
+    <div style={{ marginLeft: depth * 20, marginBottom: 8 }}>
+      <div style={{
+        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        padding: '10px 14px', cursor: 'pointer',
+      }} onClick={() => setCollapsed(c => !c)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'var(--font-mono)' }}>
+              {collapsed ? '▶' : '▼'}
+            </span>
+            <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--accent)' }}>Stage {stageId}</span>
+            {planRoot && (
+              <span style={{ fontSize: 11, color: 'var(--text)' }}>{planRoot.name}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+            {stats.state && <span>{stats.state}</span>}
+            {stats.totalMemoryReservation && <span>Bellek: {stats.totalMemoryReservation}</span>}
+            {stats.totalCpuTime && <span>CPU: {stats.totalCpuTime}</span>}
+            {stats.rawInputDataSize && <span>Girdi: {stats.rawInputDataSize}</span>}
+          </div>
+        </div>
+
+        {!collapsed && planRoot && (
+          <div style={{ marginTop: 10 }}>
+            <PlanNode node={planRoot} />
+          </div>
+        )}
+      </div>
+
+      {!collapsed && children.map((child, i) => (
+        <TrinoStagePlan key={i} stage={child} depth={depth + 1} />
+      ))}
+    </div>
+  )
+}
+
+function PlanNode({ node, depth = 0 }) {
+  const [collapsed, setCollapsed] = useState(false)
+  if (!node) return null
+
+  const children = node.children || []
+  const estimates = node.estimates?.[0]
+  const details = Object.entries(node.details || {})
+
+  return (
+    <div style={{ marginLeft: depth * 16, borderLeft: depth > 0 ? '1px solid var(--border)' : 'none', paddingLeft: depth > 0 ? 12 : 0, marginTop: 6 }}>
+      <div style={{ cursor: children.length > 0 ? 'pointer' : 'default' }}
+        onClick={() => children.length > 0 && setCollapsed(c => !c)}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+          {children.length > 0 && <span style={{ color: 'var(--text-subtle)', marginRight: 4 }}>{collapsed ? '▶' : '▼'}</span>}
+          {node.name}
+        </span>
+        {estimates && (
+          <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 10 }}>
+            ~{estimates.outputRowCount != null ? Math.round(estimates.outputRowCount).toLocaleString() : '?'} satır
+            {estimates.outputSizeInBytes != null && ` / ${_fmtBytes(estimates.outputSizeInBytes)}`}
+          </span>
+        )}
+      </div>
+      {!collapsed && details.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 2, marginLeft: 12 }}>
+          {details.map(([k, v], i) => (
+            <div key={i}><span style={{ color: 'var(--text-subtle)' }}>{k}:</span> {String(v).slice(0, 120)}</div>
+          ))}
+        </div>
+      )}
+      {!collapsed && children.map((child, i) => (
+        <PlanNode key={i} node={child} depth={depth + 1} />
+      ))}
+    </div>
+  )
+}
+
+// ─── Trino yardımcıları ───────────────────────────────────────────────────────
+
+function _trinoStateBadge(state) {
+  if (state === 'RUNNING')  return 'badge-active'
+  if (state === 'BLOCKED')  return 'badge-unknown'
+  if (state === 'FAILED')   return 'badge-failed'
+  if (state === 'FINISHED') return 'badge-inactive'
+  return 'badge-unknown'
+}
+
+function _fmtBytes(bytes) {
+  if (!bytes && bytes !== 0) return '-'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let val = Number(bytes)
+  let i = 0
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++ }
+  return val.toFixed(1) + ' ' + units[i]
 }
 
 // ─── Airflow Detail Panel ────────────────────────────────────────────────────

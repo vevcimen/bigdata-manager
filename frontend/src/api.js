@@ -61,6 +61,8 @@ export const exportTopology = async () => {
 
 // ── Service Detail ───────────────────────────────────────────────────────────
 export const getServiceDetail = (name) => request(`/services/${encodeURIComponent(name)}/detail`)
+export const getTrinoQueryDetail = (serviceName, queryId) =>
+  request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`)
 
 // ── Hosts ────────────────────────────────────────────────────────────────────
 export const getHosts = () => request('/hosts')
