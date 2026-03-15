@@ -40,6 +40,19 @@ async def _fetch_json(url: str, auth: Optional[tuple] = None) -> dict:
         return {"error": str(e)}
 
 
+def _parse_bytes(s: str) -> int:
+    """Trino bellek string'ini byte'a çevirir (ör: '512MB' → 536870912)."""
+    try:
+        s = s.strip()
+        units = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
+        for unit, mult in sorted(units.items(), key=lambda x: -len(x[0])):
+            if s.upper().endswith(unit):
+                return int(float(s[:-len(unit)]) * mult)
+        return int(float(s))
+    except Exception:
+        return 0
+
+
 async def _fetch_trino_json(
     url: str,
     trino_user: str = "",
@@ -259,25 +272,9 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
     auth = (username, password) if username and password else None
     base = webui_url.rstrip("/")
 
-    # Cluster istatistikleri: önce /v1/cluster, 404 alınırsa /ui/api/stats dene
-    cluster = await _fetch_trino_json(base + "/v1/cluster", trino_user, auth)
-    if isinstance(cluster, dict) and "error" in cluster and "404" in cluster["error"]:
-        cluster = await _fetch_trino_json(base + "/ui/api/stats", trino_user, auth)
-    if isinstance(cluster, dict) and "error" not in cluster:
-        data["cluster"] = {
-            "runningQueries":       cluster.get("runningQueries", 0),
-            "blockedQueries":       cluster.get("blockedQueries", 0),
-            "queuedQueries":        cluster.get("queuedQueries", 0),
-            "activeWorkers":        cluster.get("activeWorkers", 0),
-            "runningDrivers":       cluster.get("runningDrivers", 0),
-            "reservedMemory":       cluster.get("reservedMemory", 0),
-            "totalAvailableMemory": cluster.get("totalAvailableMemory", 0),
-            "totalInputRows":       cluster.get("totalInputRows", 0),
-            "totalInputBytes":      cluster.get("totalInputBytes", 0),
-            "totalCpuTimeSecs":     cluster.get("totalCpuTimeSecs", 0),
-        }
-    elif isinstance(cluster, dict) and "error" in cluster:
-        data["cluster_error"] = cluster["error"]
+    # Worker sayısı (/v1/node)
+    nodes = await _fetch_trino_json(base + "/v1/node", trino_user, auth)
+    active_workers = len(nodes) if isinstance(nodes, list) else 0
 
     # Çalışan sorgular (/v1/query)
     queries = await _fetch_trino_json(base + "/v1/query", trino_user, auth)
@@ -286,6 +283,22 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
             q for q in queries
             if q.get("state") in ("RUNNING", "QUEUED", "PLANNING", "STARTING", "FINISHING", "BLOCKED")
         ]
+
+        # Cluster istatistiklerini query listesinden türet
+        all_states = [q.get("state") for q in queries]
+        data["cluster"] = {
+            "runningQueries": all_states.count("RUNNING"),
+            "blockedQueries": all_states.count("BLOCKED"),
+            "queuedQueries":  all_states.count("QUEUED"),
+            "activeWorkers":  active_workers,
+            "runningDrivers": sum(q.get("queryStats", {}).get("runningDrivers", 0) for q in queries if q.get("state") == "RUNNING"),
+            "reservedMemory": sum(
+                _parse_bytes(q.get("queryStats", {}).get("userMemoryReservation", "0B"))
+                for q in queries if q.get("state") == "RUNNING"
+            ),
+            "totalAvailableMemory": 0,
+        }
+
         # Kullanıcı filtresi
         if allowed_users:
             active = [q for q in active if q.get("session", {}).get("user", "") in allowed_users]
