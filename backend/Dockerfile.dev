@@ -1,0 +1,14 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Bağımlılıkları önce kur (layer cache için)
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Kaynak kodu kopyala (volume mount ile override edilir)
+COPY backend/ /app/backend/
+COPY topology.yaml /app/topology.yaml
+COPY cluster_manager.dev.cfg /app/cluster_manager.dev.cfg
+
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

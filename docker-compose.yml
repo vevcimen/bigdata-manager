@@ -1,0 +1,43 @@
+services:
+
+  db:
+    image: mysql:8.0
+    container_name: kasirga_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cluster_manager
+      MYSQL_USER: cm_user
+      MYSQL_PASSWORD: cm_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - kasirga_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "cm_user", "-pcm_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: kasirga_backend
+    restart: unless-stopped
+    environment:
+      CM_CONFIG: /app/cluster_manager.dev.cfg
+      DEV_BYPASS: "1"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend        # hot reload için kaynak kod mount
+      - ./topology.yaml:/app/topology.yaml
+      - ./cluster_manager.dev.cfg:/app/cluster_manager.dev.cfg
+      - ./frontend-dist:/app/frontend-dist
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  kasirga_db_data:
