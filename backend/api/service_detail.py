@@ -300,8 +300,8 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
             ),
         }
 
-        # Sadece aktif sorgular
-        active = [q for q in queries if q.get("state") == "RUNNING"]
+        # Aktif sorgular
+        active = [q for q in queries if q.get("state") in ("RUNNING", "QUEUED", "PLANNING", "STARTING", "FINISHING", "BLOCKED")]
 
         # Sistem kullanıcılarını çıkar
         if excluded_users:
