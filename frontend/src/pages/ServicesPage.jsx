@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
@@ -489,12 +489,58 @@ function SparkDetailPanel({ detail, loading }) {
 
 // ─── Trino Detail Panel ──────────────────────────────────────────────────────
 
-function TrinoDetailPanel({ detail, loading, serviceName }) {
+const REFRESH_INTERVAL = 30
+
+function TrinoDetailPanel({ detail: initialDetail, loading: initialLoading, serviceName }) {
+  const [detail, setDetail]           = useState(initialDetail)
+  const [loading, setLoading]         = useState(initialLoading)
+  const [countdown, setCountdown]     = useState(REFRESH_INTERVAL)
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const [planQuery, setPlanQuery]     = useState(null)
   const [planData, setPlanData]       = useState(null)
   const [planLoading, setPlanLoading] = useState(false)
   const [planError, setPlanError]     = useState(null)
   const [killing, setKilling]         = useState(null)
+  const countdownRef                  = useRef(REFRESH_INTERVAL)
+  const autoRefreshRef                = useRef(true)
+
+  // initialDetail/loading dışarıdan ilk kez gelince senkronize et
+  useEffect(() => { setDetail(initialDetail) }, [initialDetail])
+  useEffect(() => { setLoading(initialLoading) }, [initialLoading])
+
+  const refresh = useCallback(async () => {
+    if (!serviceName) return
+    setLoading(true)
+    try {
+      const sd = await getServiceDetail(serviceName)
+      setDetail(sd)
+    } catch {}
+    finally {
+      setLoading(false)
+      countdownRef.current = REFRESH_INTERVAL
+      setCountdown(REFRESH_INTERVAL)
+    }
+  }, [serviceName])
+
+  // Countdown tick + auto-refresh
+  useEffect(() => {
+    const tick = setInterval(() => {
+      if (!autoRefreshRef.current) return
+      countdownRef.current -= 1
+      setCountdown(countdownRef.current)
+      if (countdownRef.current <= 0) refresh()
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [refresh])
+
+  function toggleAutoRefresh() {
+    autoRefreshRef.current = !autoRefreshRef.current
+    setAutoRefresh(autoRefreshRef.current)
+    if (autoRefreshRef.current) {
+      countdownRef.current = REFRESH_INTERVAL
+      setCountdown(REFRESH_INTERVAL)
+    }
+  }
 
   async function openPlan(q) {
     setPlanQuery(q)
@@ -550,7 +596,33 @@ function TrinoDetailPanel({ detail, loading, serviceName }) {
 
       {/* ── Çalışan Sorgular ── */}
       <div className="card mb-24">
-        <div className="card-title">Trino Çalışan Sorgular ({queries?.length || 0})</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>
+            Trino Çalışan Sorgular ({queries?.length || 0})
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {autoRefresh && (
+              <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                {countdown}s
+              </span>
+            )}
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11 }}
+              onClick={refresh}
+              disabled={loading}
+            >
+              {loading ? '⟳' : '↻'} Yenile
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11, color: autoRefresh ? 'var(--accent)' : 'var(--text-muted)' }}
+              onClick={toggleAutoRefresh}
+            >
+              {autoRefresh ? '⏸ Otomatik' : '▶ Otomatik'}
+            </button>
+          </div>
+        </div>
         {queries_error && <div className="error-banner" style={{ marginBottom: 12 }}>{queries_error}</div>}
         {(!queries || queries.length === 0) ? (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
