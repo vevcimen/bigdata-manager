@@ -592,7 +592,7 @@ function TrinoDetailPanel({ detail, loading, serviceName }) {
                     <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
                       <div>{q.rawInputDataSize || '0B'}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>
-                        {q.rawInputPositions?.toLocaleString() || 0} satır
+                        {q.processedRows?.toLocaleString() || 0} satır
                       </div>
                     </td>
                     <td style={{

@@ -256,15 +256,20 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
     """Trino detay: cluster stats + çalışan sorgular."""
     data = {"queries": [], "cluster": {}}
 
-    webui_url  = extra.get("webui_url", "")
-    username   = extra.get("username", "")
-    password   = extra.get("password", "")
-    trino_user = extra.get("trino_user", username)
+    webui_url      = extra.get("webui_url", "")
+    username       = extra.get("username", "")
+    password       = extra.get("password", "")
+    trino_user     = extra.get("trino_user", username)
 
     # allowed_users: JSON dizi veya virgülle ayrılmış string
     allowed_users = extra.get("allowed_users", [])
     if isinstance(allowed_users, str):
         allowed_users = [u.strip() for u in allowed_users.split(",") if u.strip()]
+
+    # excluded_users: sistem kullanıcılarını filtrele (ör: airflow)
+    excluded_users = extra.get("excluded_users", [])
+    if isinstance(excluded_users, str):
+        excluded_users = [u.strip() for u in excluded_users.split(",") if u.strip()]
 
     if not webui_url:
         return data
@@ -276,32 +281,40 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
     nodes = await _fetch_trino_json(base + "/v1/node", trino_user, auth)
     active_workers = len(nodes) if isinstance(nodes, list) else 0
 
-    # Çalışan sorgular (/v1/query)
+    # Tüm sorgular (/v1/query)
     queries = await _fetch_trino_json(base + "/v1/query", trino_user, auth)
     if isinstance(queries, list):
-        active = [
-            q for q in queries
-            if q.get("state") in ("RUNNING", "QUEUED", "PLANNING", "STARTING", "FINISHING", "BLOCKED")
-        ]
 
-        # Cluster istatistiklerini query listesinden türet
+        # Cluster istatistiklerini tüm query listesinden türet
         all_states = [q.get("state") for q in queries]
+        running_queries = [q for q in queries if q.get("state") == "RUNNING"]
         data["cluster"] = {
             "runningQueries": all_states.count("RUNNING"),
             "blockedQueries": all_states.count("BLOCKED"),
             "queuedQueries":  all_states.count("QUEUED"),
             "activeWorkers":  active_workers,
-            "runningDrivers": sum(q.get("queryStats", {}).get("runningDrivers", 0) for q in queries if q.get("state") == "RUNNING"),
+            "runningDrivers": sum(q.get("queryStats", {}).get("runningDrivers", 0) for q in running_queries),
             "reservedMemory": sum(
                 _parse_bytes(q.get("queryStats", {}).get("userMemoryReservation", "0B"))
-                for q in queries if q.get("state") == "RUNNING"
+                for q in running_queries
             ),
-            "totalAvailableMemory": 0,
         }
 
-        # Kullanıcı filtresi
+        # Sadece aktif sorgular
+        active = [q for q in queries if q.get("state") == "RUNNING"]
+
+        # Sistem kullanıcılarını çıkar
+        if excluded_users:
+            active = [q for q in active if q.get("session", {}).get("user", "") not in excluded_users]
+
+        # allowed_users filtresi
         if allowed_users:
             active = [q for q in active if q.get("session", {}).get("user", "") in allowed_users]
+
+        def _progress(q):
+            completed = q.get("queryStats", {}).get("completedDrivers", 0)
+            total     = q.get("queryStats", {}).get("totalDrivers", 0)
+            return round((completed / total) * 100, 1) if total > 0 else 0
 
         data["queries"] = [
             {
@@ -316,10 +329,9 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
                 "cpuTime":          q.get("queryStats", {}).get("totalCpuTime", ""),
                 "currentMemory":    q.get("queryStats", {}).get("userMemoryReservation", "0B"),
                 "peakMemory":       q.get("queryStats", {}).get("peakUserMemoryReservation", "0B"),
-                "totalMemory":      q.get("queryStats", {}).get("totalMemoryReservation", "0B"),
+                "processedRows":    q.get("queryStats", {}).get("processedRows", 0),
                 "rawInputDataSize": q.get("queryStats", {}).get("rawInputDataSize", "0B"),
-                "rawInputPositions":q.get("queryStats", {}).get("rawInputPositions", 0),
-                "progress":         q.get("queryStats", {}).get("progressPercentage", 0),
+                "progress":         _progress(q),
                 "completedDrivers": q.get("queryStats", {}).get("completedDrivers", 0),
                 "totalDrivers":     q.get("queryStats", {}).get("totalDrivers", 0),
             }
