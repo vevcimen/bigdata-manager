@@ -272,22 +272,52 @@ async def _hdfs_detail(svc: Service, extra: dict, db: Session) -> dict:
 # ─── Spark ───────────────────────────────────────────────────────────────────
 
 async def _spark_detail(svc: Service, extra: dict) -> dict:
-    """Spark detay: running + completed applications."""
+    """Spark detay: running + son 100 completed applications."""
     data = {"running": [], "completed": []}
 
     webui_url = extra.get("webui_url", "")
-    if webui_url:
-        apps_url = webui_url.rstrip("/") + "/api/v1/applications?status=running"
-        running = await _fetch_json(apps_url)
-        if isinstance(running, list):
-            data["running"] = running
+    if not webui_url:
+        return data
 
-        completed_url = webui_url.rstrip("/") + "/api/v1/applications?status=completed&limit=10"
-        completed = await _fetch_json(completed_url)
-        if isinstance(completed, list):
-            data["completed"] = completed[:10]
+    base = webui_url.rstrip("/")
+
+    def _fmt_app(app: dict) -> dict:
+        attempt = (app.get("attempts") or [{}])[0]
+        duration_ms = attempt.get("duration", 0)
+        return {
+            "id":           app.get("id", ""),
+            "name":         app.get("name", ""),
+            "user":         attempt.get("sparkUser", ""),
+            "startTime":    attempt.get("startTime", ""),
+            "endTime":      attempt.get("endTime", ""),
+            "durationMs":   duration_ms,
+            "duration":     _fmt_duration(duration_ms),
+            "completed":    attempt.get("completed", False),
+            "sparkVersion": attempt.get("appSparkVersion", ""),
+        }
+
+    running_raw = await _fetch_json(base + "/api/v1/applications?status=running")
+    if isinstance(running_raw, list):
+        data["running"] = [_fmt_app(a) for a in running_raw]
+
+    completed_raw = await _fetch_json(base + "/api/v1/applications?status=completed&limit=100")
+    if isinstance(completed_raw, list):
+        data["completed"] = [_fmt_app(a) for a in completed_raw]
 
     return data
+
+
+def _fmt_duration(ms: int) -> str:
+    if not ms:
+        return "-"
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}d {s}s"
+    h, m = divmod(m, 60)
+    return f"{h}s {m}d"
 
 
 # ─── Trino ───────────────────────────────────────────────────────────────────

@@ -220,7 +220,7 @@ export default function ServicesPage({ onNavigate }) {
 
             {/* ── Servis-spesifik detay panelleri ── */}
             {detail.type === 'hdfs' && <HdfsDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
-            {detail.type === 'spark' && <SparkDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
+            {detail.type === 'spark' && <SparkDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'trino' && <TrinoDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'airflow' && <AirflowDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
 
@@ -427,15 +427,71 @@ function HdfsDetailPanel({ detail, loading }) {
 
 // ─── Spark Detail Panel ──────────────────────────────────────────────────────
 
-function SparkDetailPanel({ detail, loading }) {
-  if (loading) return <div className="loading"><div className="spinner" /> Spark verileri yükleniyor...</div>
+const SPARK_REFRESH_INTERVAL = 30
+
+function SparkDetailPanel({ detail: initialDetail, loading: initialLoading, serviceName }) {
+  const [detail, setDetail]           = useState(initialDetail)
+  const [loading, setLoading]         = useState(initialLoading)
+  const [countdown, setCountdown]     = useState(SPARK_REFRESH_INTERVAL)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const countdownRef                  = useRef(SPARK_REFRESH_INTERVAL)
+  const autoRefreshRef                = useRef(true)
+
+  useEffect(() => { setDetail(initialDetail) }, [initialDetail])
+  useEffect(() => { setLoading(initialLoading) }, [initialLoading])
+
+  const refresh = useCallback(async () => {
+    if (!serviceName) return
+    setLoading(true)
+    try {
+      const sd = await getServiceDetail(serviceName)
+      setDetail(sd)
+    } catch {}
+    finally {
+      setLoading(false)
+      countdownRef.current = SPARK_REFRESH_INTERVAL
+      setCountdown(SPARK_REFRESH_INTERVAL)
+    }
+  }, [serviceName])
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      if (!autoRefreshRef.current) return
+      countdownRef.current -= 1
+      setCountdown(countdownRef.current)
+      if (countdownRef.current <= 0) refresh()
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [refresh])
+
+  const toggleAutoRefresh = () => {
+    const next = !autoRefreshRef.current
+    autoRefreshRef.current = next
+    setAutoRefresh(next)
+    if (next) { countdownRef.current = SPARK_REFRESH_INTERVAL; setCountdown(SPARK_REFRESH_INTERVAL) }
+  }
+
+  if (loading && !detail) return <div className="loading"><div className="spinner" /> Spark verileri yükleniyor...</div>
   if (!detail?.data) return null
   const { running, completed } = detail.data
 
+  const fmtTime = (ts) => ts ? new Date(ts).toLocaleString('tr-TR') : '-'
+
   return (
     <div>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <button className="btn btn-sm" onClick={refresh} disabled={loading} title="Yenile">
+          {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '↻'} Yenile
+        </button>
+        <button className="btn btn-sm" onClick={toggleAutoRefresh}
+          style={{ background: autoRefresh ? 'var(--accent)' : undefined }}>
+          {autoRefresh ? `Otomatik (${countdown}s)` : 'Otomatik: Kapalı'}
+        </button>
+      </div>
+
       <div className="card mb-24">
-        <div className="card-title">Spark Running Applications ({running?.length || 0})</div>
+        <div className="card-title">Aktif Uygulamalar ({running?.length || 0})</div>
         {(!running || running.length === 0) ? (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
             Çalışan uygulama yok
@@ -443,14 +499,16 @@ function SparkDetailPanel({ detail, loading }) {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>App ID</th><th>Ad</th><th>Durum</th><th>Başlangıç</th></tr></thead>
+              <thead><tr><th>App ID</th><th>Ad</th><th>Kullanıcı</th><th>Başlangıç</th><th>Süre</th><th>Spark Ver.</th></tr></thead>
               <tbody>
                 {running.map((app, i) => (
                   <tr key={i}>
-                    <td className="td-mono">{app.id}</td>
+                    <td className="td-mono" style={{ fontSize: 11 }}>{app.id}</td>
                     <td>{app.name}</td>
-                    <td><span className="badge-status badge-active">{app.attempts?.[0]?.completed ? 'Bitti' : 'Çalışıyor'}</span></td>
-                    <td className="td-muted">{app.attempts?.[0]?.startTime ? new Date(app.attempts[0].startTime).toLocaleString('tr-TR') : '-'}</td>
+                    <td className="td-muted">{app.user || '-'}</td>
+                    <td className="td-muted">{fmtTime(app.startTime)}</td>
+                    <td className="td-muted">{app.duration || '-'}</td>
+                    <td className="td-muted">{app.sparkVersion || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -468,14 +526,23 @@ function SparkDetailPanel({ detail, loading }) {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>App ID</th><th>Ad</th><th>Başlangıç</th><th>Bitiş</th></tr></thead>
+              <thead><tr><th>App ID</th><th>Ad</th><th>Kullanıcı</th><th>Başlangıç</th><th>Bitiş</th><th>Süre</th><th>Durum</th></tr></thead>
               <tbody>
                 {completed.map((app, i) => (
                   <tr key={i}>
-                    <td className="td-mono">{app.id}</td>
+                    <td className="td-mono" style={{ fontSize: 11 }}>{app.id}</td>
                     <td>{app.name}</td>
-                    <td className="td-muted">{app.attempts?.[0]?.startTime ? new Date(app.attempts[0].startTime).toLocaleString('tr-TR') : '-'}</td>
-                    <td className="td-muted">{app.attempts?.[0]?.endTime ? new Date(app.attempts[0].endTime).toLocaleString('tr-TR') : '-'}</td>
+                    <td className="td-muted">{app.user || '-'}</td>
+                    <td className="td-muted">{fmtTime(app.startTime)}</td>
+                    <td className="td-muted">{fmtTime(app.endTime)}</td>
+                    <td className="td-muted">{app.duration || '-'}</td>
+                    <td>
+                      {app.completed === true
+                        ? <span className="badge-status badge-active">Başarılı</span>
+                        : app.completed === false
+                          ? <span className="badge-status badge-failed">Başarısız</span>
+                          : <span className="badge-status badge-unknown">Bilinmiyor</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
