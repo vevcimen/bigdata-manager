@@ -272,37 +272,55 @@ async def _hdfs_detail(svc: Service, extra: dict, db: Session) -> dict:
 # ─── Spark ───────────────────────────────────────────────────────────────────
 
 async def _spark_detail(svc: Service, extra: dict) -> dict:
-    """Spark detay: running + son 100 completed applications."""
+    """Spark detay: running (Master UI /json/) + son 100 completed (History Server)."""
     data = {"running": [], "completed": []}
 
-    webui_url = extra.get("webui_url", "")
-    if not webui_url:
-        return data
+    # webui_url → Spark Master UI (port 8080)
+    # history_url → Spark History Server (port 18080) — opsiyonel
+    master_url  = extra.get("webui_url", "").rstrip("/")
+    history_url = extra.get("history_url", "").rstrip("/")
 
-    base = webui_url.rstrip("/")
+    # ── Çalışan işler: Master UI /json/ → activeapps ─────────────────────────
+    if master_url:
+        master_json = await _fetch_json(master_url + "/json/")
+        if isinstance(master_json, dict):
+            for app in master_json.get("activeapps", []):
+                duration_ms = app.get("duration", 0)
+                data["running"].append({
+                    "id":           app.get("id", ""),
+                    "name":         app.get("name", ""),
+                    "user":         app.get("user", ""),
+                    "startTime":    app.get("starttime", ""),
+                    "endTime":      "",
+                    "durationMs":   duration_ms,
+                    "duration":     _fmt_duration(duration_ms),
+                    "completed":    False,
+                    "sparkVersion": "",
+                    "cores":        app.get("cores", ""),
+                    "memoryPerSlave": app.get("memoryperslave", ""),
+                })
 
-    def _fmt_app(app: dict) -> dict:
-        attempt = (app.get("attempts") or [{}])[0]
-        duration_ms = attempt.get("duration", 0)
-        return {
-            "id":           app.get("id", ""),
-            "name":         app.get("name", ""),
-            "user":         attempt.get("sparkUser", ""),
-            "startTime":    attempt.get("startTime", ""),
-            "endTime":      attempt.get("endTime", ""),
-            "durationMs":   duration_ms,
-            "duration":     _fmt_duration(duration_ms),
-            "completed":    attempt.get("completed", False),
-            "sparkVersion": attempt.get("appSparkVersion", ""),
-        }
+    # ── Tamamlanan işler: History Server /api/v1/applications ─────────────────
+    hist_base = history_url or master_url  # history_url yoksa master_url'yi dene
+    if hist_base:
+        def _fmt_hist(app: dict) -> dict:
+            attempt = (app.get("attempts") or [{}])[0]
+            duration_ms = attempt.get("duration", 0)
+            return {
+                "id":           app.get("id", ""),
+                "name":         app.get("name", ""),
+                "user":         attempt.get("sparkUser", ""),
+                "startTime":    attempt.get("startTime", ""),
+                "endTime":      attempt.get("endTime", ""),
+                "durationMs":   duration_ms,
+                "duration":     _fmt_duration(duration_ms),
+                "completed":    attempt.get("completed", False),
+                "sparkVersion": attempt.get("appSparkVersion", ""),
+            }
 
-    running_raw = await _fetch_json(base + "/api/v1/applications?status=running")
-    if isinstance(running_raw, list):
-        data["running"] = [_fmt_app(a) for a in running_raw]
-
-    completed_raw = await _fetch_json(base + "/api/v1/applications?status=completed&limit=100")
-    if isinstance(completed_raw, list):
-        data["completed"] = [_fmt_app(a) for a in completed_raw]
+        completed_raw = await _fetch_json(hist_base + "/api/v1/applications?status=completed&limit=100")
+        if isinstance(completed_raw, list):
+            data["completed"] = [_fmt_hist(a) for a in completed_raw]
 
     return data
 
