@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail } from '../api.js'
+import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 const SERVICE_TYPES = ['hdfs', 'spark', 'kafka', 'trino', 'airflow', 'doris', 'mysql', 'zookeeper', 'pure_storage', 'kafka_connect']
@@ -490,10 +490,11 @@ function SparkDetailPanel({ detail, loading }) {
 // ─── Trino Detail Panel ──────────────────────────────────────────────────────
 
 function TrinoDetailPanel({ detail, loading, serviceName }) {
-  const [planQuery, setPlanQuery]   = useState(null)   // query obje (satır)
-  const [planData, setPlanData]     = useState(null)   // backend'den gelen detay
+  const [planQuery, setPlanQuery]     = useState(null)
+  const [planData, setPlanData]       = useState(null)
   const [planLoading, setPlanLoading] = useState(false)
-  const [planError, setPlanError]   = useState(null)
+  const [planError, setPlanError]     = useState(null)
+  const [killing, setKilling]         = useState(null)
 
   async function openPlan(q) {
     setPlanQuery(q)
@@ -507,6 +508,18 @@ function TrinoDetailPanel({ detail, loading, serviceName }) {
       setPlanError(e.message)
     } finally {
       setPlanLoading(false)
+    }
+  }
+
+  async function handleKill(q) {
+    if (!confirm(`"${q.queryId}" sorgusunu durdurmak istediğinize emin misiniz?`)) return
+    setKilling(q.queryId)
+    try {
+      await killTrinoQuery(serviceName, q.queryId)
+    } catch (e) {
+      alert('Sorgu durdurulamadı: ' + e.message)
+    } finally {
+      setKilling(null)
     }
   }
 
@@ -586,8 +599,8 @@ function TrinoDetailPanel({ detail, loading, serviceName }) {
                     <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{q.elapsedTime || '-'}</td>
                     <td className="td-muted" style={{ whiteSpace: 'nowrap' }}>{q.cpuTime || '-'}</td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
-                      <div>{q.currentMemory || '0B'}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>peak: {q.peakMemory || '0B'}</div>
+                      <div>{_toGB(q.currentMemory)} GB</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>peak: {_toGB(q.peakMemory)} GB</div>
                     </td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
                       <div>{q.rawInputDataSize || '0B'}</div>
@@ -600,13 +613,23 @@ function TrinoDetailPanel({ detail, loading, serviceName }) {
                       whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'var(--font-mono)',
                     }} title={q.query}>{q.query}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ fontSize: 11, padding: '2px 8px', whiteSpace: 'nowrap' }}
-                        onClick={() => openPlan(q)}
-                      >
-                        Plan
-                      </button>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11, padding: '2px 8px' }}
+                          onClick={() => openPlan(q)}
+                        >
+                          Plan
+                        </button>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          style={{ fontSize: 11, padding: '2px 8px' }}
+                          disabled={killing === q.queryId}
+                          onClick={() => handleKill(q)}
+                        >
+                          {killing === q.queryId ? '...' : 'Durdur'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -822,33 +845,67 @@ function TrinoStagePlan({ stage, depth = 0 }) {
   )
 }
 
+const PLAN_NODE_LABELS = {
+  'Output': 'Çıktı',
+  'Project': 'Projeksiyon',
+  'Filter': 'Filtre',
+  'TableScan': 'Tablo Tarama',
+  'Aggregate': 'Gruplama',
+  'Join': 'Birleştirme',
+  'Sort': 'Sıralama',
+  'Limit': 'Limit',
+  'TopN': 'İlk N',
+  'Exchange': 'Veri Transferi',
+  'RemoteSource': 'Uzak Kaynak',
+  'Window': 'Pencere Fonksiyonu',
+  'Distinct': 'Tekil',
+  'Union': 'Birleşim',
+  'Values': 'Sabit Değerler',
+}
+
 function PlanNode({ node, depth = 0 }) {
   const [collapsed, setCollapsed] = useState(false)
   if (!node) return null
 
   const children = node.children || []
   const estimates = node.estimates?.[0]
-  const details = Object.entries(node.details || {})
+  const details = Object.entries(node.details || {}).slice(0, 4)
+  const label = PLAN_NODE_LABELS[node.name] || node.name
+
+  const nodeColor = {
+    'TableScan': 'var(--accent)', 'Join': 'var(--warning)',
+    'Aggregate': '#a78bfa', 'Filter': 'var(--success)',
+    'Sort': '#fb923c', 'Exchange': 'var(--text-muted)',
+  }[node.name] || 'var(--text)'
 
   return (
-    <div style={{ marginLeft: depth * 16, borderLeft: depth > 0 ? '1px solid var(--border)' : 'none', paddingLeft: depth > 0 ? 12 : 0, marginTop: 6 }}>
-      <div style={{ cursor: children.length > 0 ? 'pointer' : 'default' }}
-        onClick={() => children.length > 0 && setCollapsed(c => !c)}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-          {children.length > 0 && <span style={{ color: 'var(--text-subtle)', marginRight: 4 }}>{collapsed ? '▶' : '▼'}</span>}
-          {node.name}
+    <div style={{ marginLeft: depth * 20, borderLeft: depth > 0 ? '2px solid var(--border)' : 'none', paddingLeft: depth > 0 ? 12 : 0, marginTop: 8 }}>
+      <div
+        style={{ cursor: children.length > 0 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8 }}
+        onClick={() => children.length > 0 && setCollapsed(c => !c)}
+      >
+        <span style={{
+          fontSize: 11, fontWeight: 700, color: nodeColor,
+          background: `${nodeColor}18`, border: `1px solid ${nodeColor}40`,
+          borderRadius: 4, padding: '1px 8px', whiteSpace: 'nowrap',
+        }}>
+          {children.length > 0 && <span style={{ marginRight: 4 }}>{collapsed ? '▶' : '▼'}</span>}
+          {label}
         </span>
-        {estimates && (
-          <span style={{ fontSize: 10, color: 'var(--text-subtle)', marginLeft: 10 }}>
-            ~{estimates.outputRowCount != null ? Math.round(estimates.outputRowCount).toLocaleString() : '?'} satır
-            {estimates.outputSizeInBytes != null && ` / ${_fmtBytes(estimates.outputSizeInBytes)}`}
+        {estimates && estimates.outputRowCount != null && (
+          <span style={{ fontSize: 10, color: 'var(--text-subtle)' }}>
+            ~{Math.round(estimates.outputRowCount).toLocaleString()} satır
+            {estimates.outputSizeInBytes != null && ` · ${_fmtBytes(estimates.outputSizeInBytes)}`}
           </span>
         )}
       </div>
       {!collapsed && details.length > 0 && (
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 2, marginLeft: 12 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, marginLeft: 8 }}>
           {details.map(([k, v], i) => (
-            <div key={i}><span style={{ color: 'var(--text-subtle)' }}>{k}:</span> {String(v).slice(0, 120)}</div>
+            <div key={i} style={{ marginBottom: 2 }}>
+              <span style={{ color: 'var(--text-subtle)', fontWeight: 500 }}>{k}: </span>
+              <span style={{ fontFamily: 'var(--font-mono)' }}>{String(v).slice(0, 100)}</span>
+            </div>
           ))}
         </div>
       )}
@@ -860,6 +917,18 @@ function PlanNode({ node, depth = 0 }) {
 }
 
 // ─── Trino yardımcıları ───────────────────────────────────────────────────────
+
+function _toGB(trinoStr) {
+  if (!trinoStr || trinoStr === '0B') return '0.00'
+  const units = { 'TB': 1024, 'GB': 1, 'MB': 1/1024, 'KB': 1/1024/1024, 'B': 1/1024/1024/1024 }
+  for (const [unit, mult] of Object.entries(units)) {
+    if (trinoStr.toUpperCase().endsWith(unit)) {
+      const val = parseFloat(trinoStr) * mult
+      return val.toFixed(2)
+    }
+  }
+  return '0.00'
+}
 
 function _trinoStateBadge(state) {
   if (state === 'RUNNING')  return 'badge-active'

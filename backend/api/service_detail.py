@@ -118,6 +118,45 @@ async def service_detail(service_name: str, db: Session = Depends(get_db)):
 
 # ─── Trino sorgu planı endpoint ───────────────────────────────────────────────
 
+@router.delete("/api/services/{service_name}/trino/query/{query_id}")
+async def trino_kill_query(
+    service_name: str,
+    query_id: str,
+    db: Session = Depends(get_db),
+):
+    """Çalışan bir Trino sorgusunu durdurur (DELETE /v1/query/{id})."""
+    svc = db.query(Service).filter_by(name=service_name).first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Servis bulunamadı")
+
+    extra = svc.extra or {}
+    webui_url  = extra.get("webui_url", "")
+    username   = extra.get("username", "")
+    password   = extra.get("password", "")
+    trino_user = extra.get("trino_user", username)
+
+    if not webui_url:
+        raise HTTPException(status_code=400, detail="webui_url tanımlı değil")
+
+    url = webui_url.rstrip("/") + f"/v1/query/{query_id}"
+    try:
+        headers = {}
+        if trino_user:
+            headers["X-Trino-User"] = trino_user
+        async with httpx.AsyncClient(timeout=TIMEOUT, verify=False) as client:
+            kwargs: dict = {"headers": headers}
+            if username and password:
+                kwargs["auth"] = (username, password)
+            resp = await client.delete(url, **kwargs)
+            if resp.status_code in (200, 204):
+                return {"success": True, "queryId": query_id}
+            raise HTTPException(status_code=resp.status_code, detail=f"Trino yanıtı: {resp.status_code}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.get("/api/services/{service_name}/trino/query/{query_id}")
 async def trino_query_detail(
     service_name: str,
@@ -306,10 +345,6 @@ async def _trino_detail(svc: Service, extra: dict) -> dict:
         # Sistem kullanıcılarını çıkar
         if excluded_users:
             active = [q for q in active if q.get("session", {}).get("user", "") not in excluded_users]
-
-        # allowed_users filtresi
-        if allowed_users:
-            active = [q for q in active if q.get("session", {}).get("user", "") in allowed_users]
 
         def _progress(q):
             completed = q.get("queryStats", {}).get("completedDrivers", 0)

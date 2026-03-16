@@ -63,6 +63,8 @@ export const exportTopology = async () => {
 export const getServiceDetail = (name) => request(`/services/${encodeURIComponent(name)}/detail`)
 export const getTrinoQueryDetail = (serviceName, queryId) =>
   request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`)
+export const killTrinoQuery = (serviceName, queryId) =>
+  request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`, { method: 'DELETE' })
 
 // ── Hosts ────────────────────────────────────────────────────────────────────
 export const getHosts = () => request('/hosts')
