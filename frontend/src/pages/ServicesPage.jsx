@@ -680,10 +680,21 @@ function TrinoDetailPanel({ detail: initialDetail, loading: initialLoading, serv
                         {q.processedRows?.toLocaleString() || 0} satır
                       </div>
                     </td>
-                    <td style={{
-                      maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'var(--font-mono)',
-                    }} title={q.query}>{q.query}</td>
+                    <td style={{ maxWidth: 240, fontSize: 11 }}>
+                      {_isExecute(q.query) ? (
+                        <div>
+                          <span style={{
+                            fontSize: 10, background: 'rgba(210,153,34,0.15)', color: 'var(--warning)',
+                            padding: '1px 6px', borderRadius: 4, marginBottom: 2, display: 'inline-block'
+                          }}>Hazırlanmış Sorgu</span>
+                          <div style={{ fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-subtle)' }}
+                            title={q.query}>{q.query}</div>
+                        </div>
+                      ) : (
+                        <div style={{ fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={q.query}>{q.query}</div>
+                      )}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button
@@ -787,13 +798,27 @@ function TrinoQueryPlanModal({ query, detail, loading, error, onClose }) {
           )}
 
           {!loading && tab === 'sql' && (
-            <pre style={{
-              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-              padding: 16, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
-            }}>
-              {detail?.query || query.query}
-            </pre>
+            <div>
+              {detail?.expandedQuery && _isExecute(detail?.query) && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--warning)', marginBottom: 6 }}>
+                    ⚠ Hazırlanmış sorgu — gerçek SQL:
+                  </div>
+                  <pre style={{
+                    background: 'var(--bg)', border: '1px solid var(--warning)', borderRadius: 'var(--radius)',
+                    padding: 16, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
+                  }}>{detail.expandedQuery}</pre>
+                </div>
+              )}
+              <pre style={{
+                background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                padding: 16, fontSize: 12, fontFamily: 'var(--font-mono)', color: detail?.expandedQuery && _isExecute(detail?.query) ? 'var(--text-subtle)' : 'var(--text)',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
+              }}>
+                {detail?.query || query.query}
+              </pre>
+            </div>
           )}
 
           {!loading && detail && tab === 'plan' && (
@@ -989,6 +1014,10 @@ function PlanNode({ node, depth = 0 }) {
 }
 
 // ─── Trino yardımcıları ───────────────────────────────────────────────────────
+
+function _isExecute(query) {
+  return query && query.trim().toUpperCase().startsWith('EXECUTE')
+}
 
 function _toGB(trinoStr) {
   if (!trinoStr || trinoStr === '0B') return '0.00'

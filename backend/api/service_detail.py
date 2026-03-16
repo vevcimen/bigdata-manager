@@ -219,9 +219,10 @@ async def trino_query_detail(
             "totalDrivers":              stats.get("totalDrivers"),
             "progressPercentage":        stats.get("progressPercentage"),
         },
-        "outputStage":  detail.get("outputStage"),
-        "failureInfo":  detail.get("failureInfo"),
-        "warnings":     detail.get("warnings", []),
+        "outputStage":   detail.get("outputStage"),
+        "failureInfo":   detail.get("failureInfo"),
+        "warnings":      detail.get("warnings", []),
+        "expandedQuery": detail.get("expandedQuery"),  # prepared statement gerçek SQL
     }
 
 
