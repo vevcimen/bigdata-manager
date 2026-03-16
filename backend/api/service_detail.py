@@ -226,6 +226,40 @@ async def trino_query_detail(
     }
 
 
+# ─── Spark kill endpoint ─────────────────────────────────────────────────────
+
+@router.delete("/api/services/{service_name}/spark/app/{app_id:path}")
+async def spark_kill_app(
+    service_name: str,
+    app_id: str,
+    db: Session = Depends(get_db),
+):
+    """Çalışan bir Spark uygulamasını durdurur (Master UI /app/kill/)."""
+    svc = db.query(Service).filter_by(name=service_name).first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Servis bulunamadı")
+
+    extra = svc.extra or {}
+    master_url = extra.get("webui_url", "").rstrip("/")
+    if not master_url:
+        raise HTTPException(status_code=400, detail="webui_url tanımlı değil")
+
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, verify=False, follow_redirects=False) as client:
+            resp = await client.post(
+                master_url + "/app/kill/",
+                data={"id": app_id, "terminate": "true"},
+            )
+        # Spark Master 302 (redirect) veya 200 döner başarıda
+        if resp.status_code in (200, 302):
+            return {"success": True, "appId": app_id}
+        raise HTTPException(status_code=resp.status_code, detail=f"Spark yanıtı: {resp.status_code}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 # ─── HDFS ────────────────────────────────────────────────────────────────────
 
 async def _hdfs_detail(svc: Service, extra: dict, db: Session) -> dict:
@@ -272,36 +306,47 @@ async def _hdfs_detail(svc: Service, extra: dict, db: Session) -> dict:
 # ─── Spark ───────────────────────────────────────────────────────────────────
 
 async def _spark_detail(svc: Service, extra: dict) -> dict:
-    """Spark detay: running (Master UI /json/) + son 100 completed (History Server)."""
-    data = {"running": [], "completed": []}
+    """Spark detay: cluster stats + running (Master UI /json/) + son 100 completed (History Server)."""
+    data = {"running": [], "completed": [], "cluster": {}}
 
     # webui_url → Spark Master UI (port 8080)
     # history_url → Spark History Server (port 18080) — opsiyonel
     master_url  = extra.get("webui_url", "").rstrip("/")
     history_url = extra.get("history_url", "").rstrip("/")
 
-    # ── Çalışan işler: Master UI /json/ → activeapps ─────────────────────────
+    # ── Çalışan işler + cluster stats: Master UI /json/ ──────────────────────
     if master_url:
         master_json = await _fetch_json(master_url + "/json/")
         if isinstance(master_json, dict):
+            data["cluster"] = {
+                "totalCores":    master_json.get("cores", 0),
+                "usedCores":     master_json.get("coresused", 0),
+                "totalMemoryMB": master_json.get("memory", 0),
+                "usedMemoryMB":  master_json.get("memoryused", 0),
+                "workers":       len(master_json.get("workers", [])),
+                "status":        master_json.get("status", ""),
+            }
             for app in master_json.get("activeapps", []):
                 duration_ms = app.get("duration", 0)
+                start_ts    = app.get("starttime", 0)  # epoch ms
+                cores       = app.get("cores", 0)
+                mem_mb      = app.get("memoryperslave", 0)
                 data["running"].append({
-                    "id":           app.get("id", ""),
-                    "name":         app.get("name", ""),
-                    "user":         app.get("user", ""),
-                    "startTime":    app.get("starttime", ""),
-                    "endTime":      "",
-                    "durationMs":   duration_ms,
-                    "duration":     _fmt_duration(duration_ms),
-                    "completed":    False,
-                    "sparkVersion": "",
-                    "cores":        app.get("cores", ""),
-                    "memoryPerSlave": app.get("memoryperslave", ""),
+                    "id":            app.get("id", ""),
+                    "name":          app.get("name", ""),
+                    "user":          app.get("user", ""),
+                    "startTime":     start_ts,
+                    "endTime":       "",
+                    "durationMs":    duration_ms,
+                    "duration":      _fmt_duration(duration_ms),
+                    "completed":     False,
+                    "sparkVersion":  "",
+                    "cores":         cores,
+                    "memoryMB":      mem_mb,
                 })
 
     # ── Tamamlanan işler: History Server /api/v1/applications ─────────────────
-    hist_base = history_url or master_url  # history_url yoksa master_url'yi dene
+    hist_base = history_url or master_url
     if hist_base:
         def _fmt_hist(app: dict) -> dict:
             attempt = (app.get("attempts") or [{}])[0]
@@ -316,6 +361,8 @@ async def _spark_detail(svc: Service, extra: dict) -> dict:
                 "duration":     _fmt_duration(duration_ms),
                 "completed":    attempt.get("completed", False),
                 "sparkVersion": attempt.get("appSparkVersion", ""),
+                "cores":        "",
+                "memoryMB":     "",
             }
 
         completed_raw = await _fetch_json(hist_base + "/api/v1/applications?status=completed&limit=100")
@@ -326,16 +373,19 @@ async def _spark_detail(svc: Service, extra: dict) -> dict:
 
 
 def _fmt_duration(ms: int) -> str:
-    if not ms:
+    if not ms or ms < 0:
         return "-"
     s = ms // 1000
     if s < 60:
-        return f"{s}s"
+        return f"{s} sn"
     m, s = divmod(s, 60)
     if m < 60:
-        return f"{m}d {s}s"
+        return f"{m} dk {s} sn"
     h, m = divmod(m, 60)
-    return f"{h}s {m}d"
+    if h < 24:
+        return f"{h} sa {m} dk"
+    d, h = divmod(h, 24)
+    return f"{d} gün {h} sa"
 
 
 # ─── Trino ───────────────────────────────────────────────────────────────────

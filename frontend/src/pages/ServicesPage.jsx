@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery } from '../api.js'
+import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery, killSparkApp } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 const SERVICE_TYPES = ['hdfs', 'spark', 'kafka', 'trino', 'airflow', 'doris', 'mysql', 'zookeeper', 'pure_storage', 'kafka_connect']
@@ -471,17 +471,42 @@ function SparkDetailPanel({ detail: initialDetail, loading: initialLoading, serv
     if (next) { countdownRef.current = SPARK_REFRESH_INTERVAL; setCountdown(SPARK_REFRESH_INTERVAL) }
   }
 
+  const [killing, setKilling] = useState(null)
+
   if (loading && !detail) return <div className="loading"><div className="spinner" /> Spark verileri yükleniyor...</div>
   if (!detail?.data) return null
-  const { running, completed } = detail.data
+  const { running, completed, cluster } = detail.data
 
-  const fmtTime = (ts) => ts ? new Date(ts).toLocaleString('tr-TR') : '-'
+  const fmtTime = (ts) => {
+    if (!ts) return '-'
+    const d = typeof ts === 'number' ? new Date(ts) : new Date(ts)
+    return isNaN(d) ? '-' : d.toLocaleString('tr-TR')
+  }
+  const fmtMem = (mb) => {
+    if (!mb && mb !== 0) return '-'
+    if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB'
+    return mb + ' MB'
+  }
+  const pct = (used, total) => total > 0 ? Math.round(used / total * 100) : 0
+
+  const handleKill = async (app) => {
+    if (!window.confirm(`"${app.name}" (${app.id}) uygulamasını durdurmak istediğinize emin misiniz?`)) return
+    setKilling(app.id)
+    try {
+      await killSparkApp(serviceName, app.id)
+      setTimeout(refresh, 1500)
+    } catch (e) {
+      alert('Kill başarısız: ' + e.message)
+    } finally {
+      setKilling(null)
+    }
+  }
 
   return (
     <div>
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <button className="btn btn-sm" onClick={refresh} disabled={loading} title="Yenile">
+        <button className="btn btn-sm" onClick={refresh} disabled={loading}>
           {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '↻'} Yenile
         </button>
         <button className="btn btn-sm" onClick={toggleAutoRefresh}
@@ -489,6 +514,37 @@ function SparkDetailPanel({ detail: initialDetail, loading: initialLoading, serv
           {autoRefresh ? `Otomatik (${countdown}s)` : 'Otomatik: Kapalı'}
         </button>
       </div>
+
+      {/* Cluster Kaynakları */}
+      {cluster && (cluster.totalCores > 0 || cluster.workers > 0) && (
+        <div className="card mb-24">
+          <div className="card-title">Cluster Kaynakları</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>WORKER SAYISI</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{cluster.workers}</div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CPU CORE</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{cluster.usedCores} <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>/ {cluster.totalCores} ({pct(cluster.usedCores, cluster.totalCores)}%)</span></div>
+              <div style={{ background: 'var(--border)', borderRadius: 3, height: 4, marginTop: 6 }}>
+                <div style={{ background: 'var(--accent)', borderRadius: 3, height: 4, width: pct(cluster.usedCores, cluster.totalCores) + '%' }} />
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>BELLEK</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{fmtMem(cluster.usedMemoryMB)} <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>/ {fmtMem(cluster.totalMemoryMB)} ({pct(cluster.usedMemoryMB, cluster.totalMemoryMB)}%)</span></div>
+              <div style={{ background: 'var(--border)', borderRadius: 3, height: 4, marginTop: 6 }}>
+                <div style={{ background: 'var(--warning, #f59e0b)', borderRadius: 3, height: 4, width: pct(cluster.usedMemoryMB, cluster.totalMemoryMB) + '%' }} />
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>AKTİF UYGULAMA</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{running?.length || 0}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card mb-24">
         <div className="card-title">Aktif Uygulamalar ({running?.length || 0})</div>
@@ -499,7 +555,7 @@ function SparkDetailPanel({ detail: initialDetail, loading: initialLoading, serv
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>App ID</th><th>Ad</th><th>Kullanıcı</th><th>Başlangıç</th><th>Süre</th><th>Spark Ver.</th></tr></thead>
+              <thead><tr><th>App ID</th><th>Ad</th><th>Kullanıcı</th><th>Başlangıç</th><th>Süre</th><th>Core</th><th>Mem/Exec</th><th></th></tr></thead>
               <tbody>
                 {running.map((app, i) => (
                   <tr key={i}>
@@ -508,7 +564,14 @@ function SparkDetailPanel({ detail: initialDetail, loading: initialLoading, serv
                     <td className="td-muted">{app.user || '-'}</td>
                     <td className="td-muted">{fmtTime(app.startTime)}</td>
                     <td className="td-muted">{app.duration || '-'}</td>
-                    <td className="td-muted">{app.sparkVersion || '-'}</td>
+                    <td className="td-muted">{app.cores ?? '-'}</td>
+                    <td className="td-muted">{app.memoryMB ? fmtMem(app.memoryMB) : '-'}</td>
+                    <td>
+                      <button className="btn btn-sm" style={{ background: '#dc2626', color: '#fff', padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => handleKill(app)} disabled={killing === app.id}>
+                        {killing === app.id ? '...' : 'Durdur'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -65,6 +65,8 @@ export const getTrinoQueryDetail = (serviceName, queryId) =>
   request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`)
 export const killTrinoQuery = (serviceName, queryId) =>
   request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`, { method: 'DELETE' })
+export const killSparkApp = (serviceName, appId) =>
+  request(`/services/${encodeURIComponent(serviceName)}/spark/app/${encodeURIComponent(appId)}`, { method: 'DELETE' })
 
 // ── Hosts ────────────────────────────────────────────────────────────────────
 export const getHosts = () => request('/hosts')
