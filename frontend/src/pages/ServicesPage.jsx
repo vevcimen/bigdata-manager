@@ -430,13 +430,15 @@ function HdfsDetailPanel({ detail, loading, serviceName }) {
 // ─── HDFS Tablo Analizi ───────────────────────────────────────────────────────
 
 function HdfsTableAnalysis({ serviceName }) {
-  const [schemas,        setSchemas]        = useState(null)   // null = henüz yüklenmedi
+  const [schemas,        setSchemas]        = useState(null)
   const [schemasLoading, setSchemasLoading] = useState(false)
   const [schemasError,   setSchemasError]   = useState(null)
   const [selectedSchema, setSelectedSchema] = useState('')
   const [tables,         setTables]         = useState(null)
   const [tablesLoading,  setTablesLoading]  = useState(false)
-  const [checked,        setChecked]        = useState({})     // tableName → bool
+  const [hmsEnabled,     setHmsEnabled]     = useState(false)
+  const [checked,        setChecked]        = useState({})
+  const [search,         setSearch]         = useState('')
   const [analyzing,      setAnalyzing]      = useState(false)
   const [result,         setResult]         = useState(null)
   const [analyzeError,   setAnalyzeError]   = useState(null)
@@ -467,13 +469,16 @@ function HdfsTableAnalysis({ serviceName }) {
     setSelectedSchema(schema)
     setTables(null)
     setChecked({})
+    setSearch('')
     setResult(null)
     setAnalyzeError(null)
+    setHmsEnabled(false)
     if (!schema) return
     setTablesLoading(true)
     try {
       const data = await getHdfsTables(serviceName, schema)
       setTables(data.tables || [])
+      setHmsEnabled(data.hmsEnabled || false)
     } catch (e) {
       setTables([])
     } finally {
@@ -481,10 +486,20 @@ function HdfsTableAnalysis({ serviceName }) {
     }
   }
 
+  // Arama filtresine uyan tablolar
+  const filteredTables = (tables || []).filter(t => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (
+      t.name.toLowerCase().includes(q) ||
+      (t.hmsName && t.hmsName.toLowerCase().includes(q))
+    )
+  })
+
   const toggleAll = (val) => {
     const next = {}
-    ;(tables || []).forEach(t => { next[t.name] = val })
-    setChecked(next)
+    filteredTables.forEach(t => { next[t.name] = val })
+    setChecked(prev => ({ ...prev, ...next }))
   }
 
   const analyze = async () => {
@@ -507,152 +522,200 @@ function HdfsTableAnalysis({ serviceName }) {
   const maxBytes = result?.tables?.[0]?.sizeBytes || 1
 
   const barColor = (pct) => {
-    if (pct > 66) return '#ef4444'
-    if (pct > 33) return '#f59e0b'
-    return '#3b82f6'
+    if (pct > 50) return 'linear-gradient(90deg,#ef4444,#f87171)'
+    if (pct > 20) return 'linear-gradient(90deg,#f59e0b,#fbbf24)'
+    return 'linear-gradient(90deg,#3b82f6,#60a5fa)'
   }
+
+  // Tablo satırı display adı
+  const displayName = (t) => t.hmsName && t.hmsName !== t.name ? t.hmsName : t.name
+  const hasAlias    = (t) => t.hmsName && t.hmsName !== t.name
 
   return (
     <div className="card mb-24">
-      <div className="card-title">HDFS Tablo Analizi</div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div className="card-title" style={{ margin:0 }}>HDFS Tablo Analizi</div>
+        {hmsEnabled && (
+          <span style={{ fontSize:11, background:'#1e3a5f', color:'#60a5fa', borderRadius:4, padding:'2px 8px', fontWeight:600 }}>
+            HMS ✓
+          </span>
+        )}
+      </div>
 
-      {/* Şema yükleme */}
-      {!schemas && (
+      {/* Şema seçimi */}
+      {!schemas ? (
         <div style={{ marginBottom: 16 }}>
           <button className="btn" onClick={loadSchemas} disabled={schemasLoading}>
-            {schemasLoading ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Yükleniyor…</> : 'Şemaları Yükle'}
+            {schemasLoading
+              ? <><span className="spinner" style={{ width:12, height:12 }} /> Yükleniyor…</>
+              : '⊕ Şemaları Yükle'}
           </button>
-          {schemasError && <div className="error-banner" style={{ marginTop: 8 }}>{schemasError}</div>}
+          {schemasError && <div className="error-banner" style={{ marginTop:8 }}>{schemasError}</div>}
+        </div>
+      ) : (
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+          <div style={{ position:'relative' }}>
+            <select
+              style={{
+                appearance:'none', background:'var(--card)', color:'var(--text)',
+                border:'1px solid var(--border)', borderRadius:6,
+                padding:'7px 32px 7px 12px', fontSize:13, cursor:'pointer',
+                minWidth:200, outline:'none',
+              }}
+              value={selectedSchema}
+              onChange={e => loadTables(e.target.value)}
+            >
+              <option value="">— Şema seçin —</option>
+              {schemas.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+            </select>
+            <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:'var(--text-muted)', fontSize:11 }}>▼</span>
+          </div>
+          <button className="btn btn-sm" onClick={loadSchemas} disabled={schemasLoading} title="Listeyi yenile" style={{ fontSize:14 }}>↻</button>
+          <span style={{ fontSize:12, color:'var(--text-muted)' }}>{schemas.length} şema</span>
         </div>
       )}
 
-      {schemas && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          <select
-            className="input" style={{ width: 220 }}
-            value={selectedSchema}
-            onChange={e => loadTables(e.target.value)}
-          >
-            <option value="">— Şema seçin —</option>
-            {schemas.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-          </select>
-          <button className="btn btn-sm" onClick={loadSchemas} disabled={schemasLoading} title="Şema listesini yenile">
-            ↻
-          </button>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{schemas.length} şema</span>
+      {/* Tablo yükleniyor */}
+      {tablesLoading && (
+        <div style={{ color:'var(--text-muted)', fontSize:13, display:'flex', alignItems:'center', gap:8, padding:'12px 0' }}>
+          <div className="spinner" /> Tablolar yükleniyor…
         </div>
       )}
 
       {/* Tablo listesi */}
-      {tablesLoading && (
-        <div className="loading"><div className="spinner" /> Tablolar yükleniyor…</div>
-      )}
-
       {tables && !tablesLoading && (
         <div>
           {tables.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>Bu şemada tablo bulunamadı.</div>
+            <div style={{ color:'var(--text-muted)', fontSize:13, marginBottom:12 }}>Bu şemada tablo bulunamadı.</div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tables.length} tablo</span>
+              {/* Arama + kontroller */}
+              <div style={{ display:'flex', gap:8, marginBottom:10, alignItems:'center', flexWrap:'wrap' }}>
+                <div style={{ position:'relative', flex:1, minWidth:160 }}>
+                  <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', fontSize:13, pointerEvents:'none' }}>🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Tablo ara…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    style={{
+                      width:'100%', boxSizing:'border-box',
+                      background:'var(--bg)', color:'var(--text)',
+                      border:'1px solid var(--border)', borderRadius:6,
+                      padding:'7px 10px 7px 30px', fontSize:13, outline:'none',
+                    }}
+                  />
+                  {search && (
+                    <button onClick={() => setSearch('')} style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:14 }}>✕</button>
+                  )}
+                </div>
                 <button className="btn btn-sm" onClick={() => toggleAll(true)}>Tümünü Seç</button>
                 <button className="btn btn-sm" onClick={() => toggleAll(false)}>Temizle</button>
+                <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>
+                  {filteredTables.length}/{tables.length} tablo
+                  {selectedCount > 0 && <span style={{ color:'var(--accent)', marginLeft:6 }}>{selectedCount} seçili</span>}
+                </span>
               </div>
+
+              {/* Tablo grid */}
               <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: 4,
-                maxHeight: 240,
-                overflowY: 'auto',
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 6,
-                padding: '8px 10px',
-                marginBottom: 12,
+                maxHeight:260, overflowY:'auto',
+                background:'var(--bg)', border:'1px solid var(--border)',
+                borderRadius:8, padding:'6px 8px', marginBottom:12,
               }}>
-                {tables.map(t => (
-                  <label key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, padding: '2px 0' }}>
-                    <input type="checkbox"
-                      checked={!!checked[t.name]}
-                      onChange={e => setChecked(prev => ({ ...prev, [t.name]: e.target.checked }))}
-                    />
-                    <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                  </label>
-                ))}
+                {filteredTables.length === 0 ? (
+                  <div style={{ color:'var(--text-muted)', fontSize:12, padding:'8px 4px' }}>"{search}" ile eşleşen tablo yok.</div>
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px, 1fr))', gap:2 }}>
+                    {filteredTables.map(t => (
+                      <label key={t.name} style={{
+                        display:'flex', alignItems:'center', gap:7,
+                        cursor:'pointer', padding:'4px 6px', borderRadius:5,
+                        background: checked[t.name] ? 'rgba(59,130,246,0.12)' : 'transparent',
+                        transition:'background 0.15s',
+                      }}>
+                        <input type="checkbox"
+                          checked={!!checked[t.name]}
+                          onChange={e => setChecked(prev => ({ ...prev, [t.name]: e.target.checked }))}
+                          style={{ accentColor:'var(--accent)', flexShrink:0 }}
+                        />
+                        <span style={{ fontSize:12, overflow:'hidden', minWidth:0 }}>
+                          <span style={{ fontFamily:'monospace', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                            title={displayName(t)}>
+                            {displayName(t)}
+                          </span>
+                          {hasAlias(t) && (
+                            <span style={{ fontSize:10, color:'var(--text-muted)', fontFamily:'monospace', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                              title={t.name}>
+                              ↳ {t.name}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <button className="btn" onClick={analyze} disabled={analyzing || selectedCount === 0}
-                style={{ minWidth: 130 }}>
+                style={{ minWidth:140 }}>
                 {analyzing
-                  ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Analiz ediliyor…</>
-                  : `Analiz Et (${selectedCount} tablo)`}
+                  ? <><span className="spinner" style={{ width:12, height:12 }} /> Analiz ediliyor…</>
+                  : `Analiz Et  (${selectedCount} tablo)`}
               </button>
             </>
           )}
         </div>
       )}
 
-      {analyzeError && <div className="error-banner" style={{ marginTop: 12 }}>{analyzeError}</div>}
+      {analyzeError && <div className="error-banner" style={{ marginTop:12 }}>{analyzeError}</div>}
 
-      {/* Sonuçlar */}
+      {/* ─── Sonuçlar ─────────────────────────────────────────── */}
       {result && (
-        <div style={{ marginTop: 20 }}>
-          {/* Özet başlık */}
-          <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ŞEMA</div>
-              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }}>{result.schema}</div>
-            </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TOPLAM BOYUT</div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtBytes(result.totalBytes)}</div>
-            </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ANALİZ EDİLEN</div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{result.tables.length} tablo</div>
-            </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TOPLAM DOSYA</div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>
-                {result.tables.reduce((s, t) => s + t.fileCount, 0).toLocaleString('tr-TR')}
+        <div style={{ marginTop:24 }}>
+          {/* Özet kartlar */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px,1fr))', gap:10, marginBottom:20 }}>
+            {[
+              { label:'ŞEMA',           value: result.schema,     mono:true },
+              { label:'TOPLAM BOYUT',   value: fmtBytes(result.totalBytes) },
+              { label:'ANALİZ EDİLEN',  value: `${result.tables.length} tablo` },
+              { label:'TOPLAM DOSYA',   value: result.tables.reduce((s,t)=>s+t.fileCount,0).toLocaleString('tr-TR') },
+              { label:'TOPLAM KLASÖR',  value: result.tables.reduce((s,t)=>s+t.dirCount,0).toLocaleString('tr-TR') },
+            ].map((c,i) => (
+              <div key={i} style={{ background:'var(--bg)', borderRadius:7, padding:'10px 14px', border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:10, color:'var(--text-muted)', letterSpacing:'0.05em', marginBottom:4 }}>{c.label}</div>
+                <div style={{ fontSize:14, fontWeight:700, fontFamily: c.mono ? 'monospace' : undefined }}>{c.value}</div>
               </div>
-            </div>
+            ))}
           </div>
 
           {/* Bar chart */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
             {result.tables.map((t, i) => {
-              const pct = maxBytes > 0 ? (t.sizeBytes / maxBytes * 100) : 0
+              const pct      = maxBytes > 0 ? (t.sizeBytes / maxBytes * 100) : 0
               const totalPct = result.totalBytes > 0 ? (t.sizeBytes / result.totalBytes * 100) : 0
+              const label    = t.hmsName && t.hmsName !== t.table ? t.hmsName : t.table
+              const subLabel = t.hmsName && t.hmsName !== t.table ? t.table : null
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Tablo adı */}
-                  <div style={{
-                    width: 200, minWidth: 200, fontSize: 12, fontFamily: 'monospace',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    color: 'var(--text)',
-                  }} title={t.table}>{t.table}</div>
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  {/* Tablo adı (HMS adı büyük, HDFS adı küçük) */}
+                  <div style={{ width:200, minWidth:200 }}>
+                    <div style={{ fontSize:12, fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--text)' }} title={label}>{label}</div>
+                    {subLabel && <div style={{ fontSize:10, fontFamily:'monospace', color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={subLabel}>↳ {subLabel}</div>}
+                  </div>
                   {/* Bar */}
-                  <div style={{ flex: 1, background: 'var(--border)', borderRadius: 4, height: 20, position: 'relative', minWidth: 0 }}>
+                  <div style={{ flex:1, background:'var(--border)', borderRadius:4, height:18, overflow:'hidden', minWidth:0 }}>
                     <div style={{
-                      width: pct + '%', height: '100%', borderRadius: 4,
+                      width: pct + '%', height:'100%',
                       background: barColor(totalPct),
-                      transition: 'width 0.4s ease',
+                      borderRadius:4,
+                      transition:'width 0.5s cubic-bezier(0.4,0,0.2,1)',
                       minWidth: pct > 0 ? 4 : 0,
                     }} />
                   </div>
-                  {/* Boyut */}
-                  <div style={{ width: 80, textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {fmtBytes(t.sizeBytes)}
-                  </div>
-                  {/* Dosya sayısı */}
-                  <div style={{ width: 80, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    {t.fileCount.toLocaleString('tr-TR')} dosya
-                  </div>
-                  {/* Yüzde */}
-                  <div style={{ width: 44, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    %{totalPct.toFixed(1)}
-                  </div>
+                  <div style={{ width:76, textAlign:'right', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>{fmtBytes(t.sizeBytes)}</div>
+                  <div style={{ width:76, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>{t.fileCount.toLocaleString('tr-TR')} dosya</div>
+                  <div style={{ width:40, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>%{totalPct.toFixed(1)}</div>
                 </div>
               )
             })}

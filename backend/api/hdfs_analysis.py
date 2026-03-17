@@ -2,13 +2,17 @@
 HDFS Tablo Analizi API'si.
 
 GET  /api/services/{name}/hdfs/schemas                       → Warehouse şema listesi (SSH)
-GET  /api/services/{name}/hdfs/schemas/{schema}/tables       → Şema altındaki tablo listesi
+GET  /api/services/{name}/hdfs/schemas/{schema}/tables       → Şema altındaki tablo listesi + HMS adları
 POST /api/services/{name}/hdfs/analyze                       → Seçili tabloların boyut + dosya sayısı
+
+HMS tablo adı eşlemesi için servis extra alanları:
+  hms_host, hms_port (3306), hms_db (metastore), hms_user, hms_password
 """
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional
 
+import pymysql
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -20,7 +24,7 @@ from .deps import get_db, get_cfg
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["hdfs-analysis"])
 
-HDFS_CMD_TIMEOUT = 120  # hdfs dfs komutları yavaş olabilir
+HDFS_CMD_TIMEOUT = 120
 
 
 def _ssh_params(cfg):
@@ -50,6 +54,53 @@ def _run(host: Host, sp: dict, cmd: str):
         jump_host=jump,
         jump_user=sp["user"] if jump else None,
     )
+
+
+# ─── HMS MySQL: HDFS path → gerçek tablo adı eşlemesi ────────────────────────
+
+def _hms_path_to_name(extra: dict, schema_name: str) -> dict:
+    """
+    Hive Metastore MySQL'den {hdfs_dir_name: hms_table_name} eşlemesi döner.
+    extra'da hms_host, hms_db, hms_user, hms_password tanımlı olmalı.
+    Tanımlı değilse boş dict döner (sessizce atlar).
+    """
+    hms_host = extra.get("hms_host", "")
+    if not hms_host:
+        return {}
+
+    hms_port = int(extra.get("hms_port", 3306))
+    hms_db   = extra.get("hms_db", "metastore")
+    hms_user = extra.get("hms_user", "")
+    hms_pass = extra.get("hms_password", "")
+
+    try:
+        conn = pymysql.connect(
+            host=hms_host, port=hms_port, db=hms_db,
+            user=hms_user, password=hms_pass,
+            connect_timeout=10, read_timeout=30,
+            charset="utf8mb4",
+        )
+        with conn:
+            with conn.cursor() as cur:
+                # LOCATION'ın son path segmenti → TBL_NAME
+                cur.execute("""
+                    SELECT s.LOCATION, t.TBL_NAME
+                    FROM   TBLS t
+                    JOIN   SDS  s ON t.SD_ID = s.SD_ID
+                    JOIN   DBS  d ON t.DB_ID  = d.DB_ID
+                    WHERE  d.NAME = %s
+                """, (schema_name,))
+                rows = cur.fetchall()
+
+        mapping = {}
+        for location, tbl_name in rows:
+            if location:
+                dir_name = location.rstrip("/").split("/")[-1]
+                mapping[dir_name] = tbl_name
+        return mapping
+    except Exception as e:
+        log.warning(f"HMS bağlantı hatası ({hms_host}): {e}")
+        return {}
 
 
 # ─── Şema listesi ─────────────────────────────────────────────────────────────
@@ -97,18 +148,29 @@ async def list_tables(
     schema_path = f"{warehouse}/{schema_name}"
     sp  = _ssh_params(cfg)
     cmd = f"hdfs dfs -ls '{schema_path}' 2>/dev/null | tail -n +2 | awk '{{print $NF}}'"
-    _, out, err = await asyncio.to_thread(_run, host, sp, cmd)
+
+    # HDFS listesi ve HMS eşlemesi paralel çalıştır
+    hdfs_result, hms_map = await asyncio.gather(
+        asyncio.to_thread(_run, host, sp, cmd),
+        asyncio.to_thread(_hms_path_to_name, extra, schema_name),
+    )
+    _, out, _ = hdfs_result
 
     tables = []
     for line in out.splitlines():
         line = line.strip()
         if not line:
             continue
-        name = line.rstrip("/").split("/")[-1]
-        if name:
-            tables.append({"name": name, "path": line})
+        dir_name = line.rstrip("/").split("/")[-1]
+        if dir_name:
+            hms_name = hms_map.get(dir_name)  # None = eşleşme yok
+            tables.append({
+                "name":    dir_name,
+                "hmsName": hms_name,          # gerçek HMS adı (farklıysa)
+                "path":    line,
+            })
 
-    return {"schema": schema_name, "tables": tables}
+    return {"schema": schema_name, "tables": tables, "hmsEnabled": bool(hms_map)}
 
 
 # ─── Boyut + dosya sayısı analizi ────────────────────────────────────────────
@@ -134,9 +196,9 @@ async def analyze_tables(
 
     sp = _ssh_params(cfg)
 
-    # Tek SSH çağrısında tüm tabloları sırayla say:
-    # hdfs dfs -count çıktısı: DIR_COUNT  FILE_COUNT  CONTENT_SIZE  PATH
-    paths = [f"{warehouse}/{body.schema_name}/{t}" for t in body.tables]
+    # Tek SSH çağrısında tüm tabloları sırayla say
+    # hdfs dfs -count: DIR_COUNT  FILE_COUNT  CONTENT_SIZE  PATH
+    paths     = [f"{warehouse}/{body.schema_name}/{t}" for t in body.tables]
     path_list = " ".join(f"'{p}'" for p in paths)
     cmd = (
         f"for p in {path_list}; do "
@@ -144,9 +206,15 @@ async def analyze_tables(
         f"  if [ -n \"$res\" ]; then echo \"$res\"; else echo \"0 0 0 $p\"; fi; "
         f"done"
     )
-    _, out, _ = await asyncio.to_thread(_run, host, sp, cmd)
 
-    results    = []
+    # HDFS count ve HMS eşlemesi paralel
+    hdfs_result, hms_map = await asyncio.gather(
+        asyncio.to_thread(_run, host, sp, cmd),
+        asyncio.to_thread(_hms_path_to_name, extra, body.schema_name),
+    )
+    _, out, _ = hdfs_result
+
+    results     = []
     total_bytes = 0
     for line in out.splitlines():
         parts = line.split()
@@ -157,10 +225,12 @@ async def analyze_tables(
             file_count = int(parts[1])
             size_bytes = int(parts[2])
             path       = parts[3]
-            table_name = path.rstrip("/").split("/")[-1]
+            dir_name   = path.rstrip("/").split("/")[-1]
+            hms_name   = hms_map.get(dir_name)
             total_bytes += size_bytes
             results.append({
-                "table":     table_name,
+                "table":     dir_name,
+                "hmsName":   hms_name,
                 "path":      path,
                 "sizeBytes": size_bytes,
                 "fileCount": file_count,
@@ -174,4 +244,5 @@ async def analyze_tables(
         "schema":     body.schema_name,
         "totalBytes": total_bytes,
         "tables":     results,
+        "hmsEnabled": bool(hms_map),
     }
