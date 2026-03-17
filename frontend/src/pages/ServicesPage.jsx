@@ -320,16 +320,32 @@ export default function ServicesPage({ onNavigate }) {
                     + Alan Ekle
                   </button>
                 </div>
-                {extraFields.map((f, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                    <input type="text" value={f.key} placeholder="Anahtar" style={{ ...inputStyle, flex: 1 }}
-                      onChange={e => { const nf = [...extraFields]; nf[i] = { ...nf[i], key: e.target.value }; setExtraFields(nf) }} />
-                    <input type={f.key === 'password' ? 'password' : 'text'} value={f.value} placeholder="Değer" style={{ ...inputStyle, flex: 2 }}
-                      onChange={e => { const nf = [...extraFields]; nf[i] = { ...nf[i], value: e.target.value }; setExtraFields(nf) }} />
-                    <button type="button" className="btn btn-danger btn-sm"
-                      onClick={() => setExtraFields(ef => ef.filter((_, j) => j !== i))}>X</button>
-                  </div>
-                ))}
+                {extraFields.map((f, i) => {
+                  const isPassword = f.key.toLowerCase().includes('password') || f.key.toLowerCase().includes('secret')
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                      <input type="text" value={f.key} placeholder="Anahtar" style={{ ...inputStyle, flex: 1 }}
+                        onChange={e => { const nf = [...extraFields]; nf[i] = { ...nf[i], key: e.target.value }; setExtraFields(nf) }} />
+                      <div style={{ flex: 2, position: 'relative', display: 'flex' }}>
+                        <input
+                          type={isPassword && !f.show ? 'password' : 'text'}
+                          value={f.value} placeholder="Değer"
+                          style={{ ...inputStyle, flex: 1, paddingRight: isPassword ? 32 : undefined }}
+                          onChange={e => { const nf = [...extraFields]; nf[i] = { ...nf[i], value: e.target.value }; setExtraFields(nf) }}
+                        />
+                        {isPassword && (
+                          <button type="button" onClick={() => { const nf = [...extraFields]; nf[i] = { ...nf[i], show: !nf[i].show }; setExtraFields(nf) }}
+                            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, padding: 0, lineHeight: 1 }}
+                            title={f.show ? 'Gizle' : 'Göster'}>
+                            {f.show ? '🙈' : '👁'}
+                          </button>
+                        )}
+                      </div>
+                      <button type="button" className="btn btn-danger btn-sm"
+                        onClick={() => setExtraFields(ef => ef.filter((_, j) => j !== i))}>X</button>
+                    </div>
+                  )
+                })}
                 {(form.type === 'trino' || form.type === 'airflow') && extraFields.length === 0 && (
                   <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 4 }}>
                     Bu servis tipi için webui_url, username ve password alanları gerekebilir.
