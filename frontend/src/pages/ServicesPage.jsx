@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery, killSparkApp } from '../api.js'
+import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery, killSparkApp, getHdfsSchemas, getHdfsTables, analyzeHdfsTables } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 const SERVICE_TYPES = ['hdfs', 'spark', 'kafka', 'trino', 'airflow', 'doris', 'mysql', 'zookeeper', 'pure_storage', 'kafka_connect']
@@ -219,7 +219,7 @@ export default function ServicesPage({ onNavigate }) {
             )}
 
             {/* ── Servis-spesifik detay panelleri ── */}
-            {detail.type === 'hdfs' && <HdfsDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
+            {detail.type === 'hdfs' && <HdfsDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'spark' && <SparkDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'trino' && <TrinoDetailPanel detail={svcDetail} loading={loadingSvcDetail} serviceName={detail.name} />}
             {detail.type === 'airflow' && <AirflowDetailPanel detail={svcDetail} loading={loadingSvcDetail} />}
@@ -358,7 +358,7 @@ const inputStyle = {
 
 // ─── HDFS Detail Panel ───────────────────────────────────────────────────────
 
-function HdfsDetailPanel({ detail, loading }) {
+function HdfsDetailPanel({ detail, loading, serviceName }) {
   if (loading) return <div className="loading"><div className="spinner" /> HDFS verileri yükleniyor...</div>
   if (!detail?.data) return null
   const { summary, history } = detail.data
@@ -421,9 +421,248 @@ function HdfsDetailPanel({ detail, loading }) {
           </div>
         </div>
       )}
+
+      {serviceName && <HdfsTableAnalysis serviceName={serviceName} />}
     </div>
   )
 }
+
+// ─── HDFS Tablo Analizi ───────────────────────────────────────────────────────
+
+function HdfsTableAnalysis({ serviceName }) {
+  const [schemas,        setSchemas]        = useState(null)   // null = henüz yüklenmedi
+  const [schemasLoading, setSchemasLoading] = useState(false)
+  const [schemasError,   setSchemasError]   = useState(null)
+  const [selectedSchema, setSelectedSchema] = useState('')
+  const [tables,         setTables]         = useState(null)
+  const [tablesLoading,  setTablesLoading]  = useState(false)
+  const [checked,        setChecked]        = useState({})     // tableName → bool
+  const [analyzing,      setAnalyzing]      = useState(false)
+  const [result,         setResult]         = useState(null)
+  const [analyzeError,   setAnalyzeError]   = useState(null)
+
+  const fmtBytes = (b) => {
+    if (!b && b !== 0) return '-'
+    if (b === 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+    let i = 0, v = b
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+    return v.toFixed(i === 0 ? 0 : 1) + ' ' + units[i]
+  }
+
+  const loadSchemas = async () => {
+    setSchemasLoading(true)
+    setSchemasError(null)
+    try {
+      const data = await getHdfsSchemas(serviceName)
+      setSchemas(data.schemas || [])
+    } catch (e) {
+      setSchemasError(e.message)
+    } finally {
+      setSchemasLoading(false)
+    }
+  }
+
+  const loadTables = async (schema) => {
+    setSelectedSchema(schema)
+    setTables(null)
+    setChecked({})
+    setResult(null)
+    setAnalyzeError(null)
+    if (!schema) return
+    setTablesLoading(true)
+    try {
+      const data = await getHdfsTables(serviceName, schema)
+      setTables(data.tables || [])
+    } catch (e) {
+      setTables([])
+    } finally {
+      setTablesLoading(false)
+    }
+  }
+
+  const toggleAll = (val) => {
+    const next = {}
+    ;(tables || []).forEach(t => { next[t.name] = val })
+    setChecked(next)
+  }
+
+  const analyze = async () => {
+    const selected = Object.keys(checked).filter(k => checked[k])
+    if (!selected.length) return
+    setAnalyzing(true)
+    setResult(null)
+    setAnalyzeError(null)
+    try {
+      const data = await analyzeHdfsTables(serviceName, { schema_name: selectedSchema, tables: selected })
+      setResult(data)
+    } catch (e) {
+      setAnalyzeError(e.message)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const selectedCount = Object.values(checked).filter(Boolean).length
+  const maxBytes = result?.tables?.[0]?.sizeBytes || 1
+
+  const barColor = (pct) => {
+    if (pct > 66) return '#ef4444'
+    if (pct > 33) return '#f59e0b'
+    return '#3b82f6'
+  }
+
+  return (
+    <div className="card mb-24">
+      <div className="card-title">HDFS Tablo Analizi</div>
+
+      {/* Şema yükleme */}
+      {!schemas && (
+        <div style={{ marginBottom: 16 }}>
+          <button className="btn" onClick={loadSchemas} disabled={schemasLoading}>
+            {schemasLoading ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Yükleniyor…</> : 'Şemaları Yükle'}
+          </button>
+          {schemasError && <div className="error-banner" style={{ marginTop: 8 }}>{schemasError}</div>}
+        </div>
+      )}
+
+      {schemas && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <select
+            className="input" style={{ width: 220 }}
+            value={selectedSchema}
+            onChange={e => loadTables(e.target.value)}
+          >
+            <option value="">— Şema seçin —</option>
+            {schemas.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+          </select>
+          <button className="btn btn-sm" onClick={loadSchemas} disabled={schemasLoading} title="Şema listesini yenile">
+            ↻
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{schemas.length} şema</span>
+        </div>
+      )}
+
+      {/* Tablo listesi */}
+      {tablesLoading && (
+        <div className="loading"><div className="spinner" /> Tablolar yükleniyor…</div>
+      )}
+
+      {tables && !tablesLoading && (
+        <div>
+          {tables.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>Bu şemada tablo bulunamadı.</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tables.length} tablo</span>
+                <button className="btn btn-sm" onClick={() => toggleAll(true)}>Tümünü Seç</button>
+                <button className="btn btn-sm" onClick={() => toggleAll(false)}>Temizle</button>
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 4,
+                maxHeight: 240,
+                overflowY: 'auto',
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                padding: '8px 10px',
+                marginBottom: 12,
+              }}>
+                {tables.map(t => (
+                  <label key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, padding: '2px 0' }}>
+                    <input type="checkbox"
+                      checked={!!checked[t.name]}
+                      onChange={e => setChecked(prev => ({ ...prev, [t.name]: e.target.checked }))}
+                    />
+                    <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                  </label>
+                ))}
+              </div>
+              <button className="btn" onClick={analyze} disabled={analyzing || selectedCount === 0}
+                style={{ minWidth: 130 }}>
+                {analyzing
+                  ? <><span className="spinner" style={{ width: 12, height: 12 }} /> Analiz ediliyor…</>
+                  : `Analiz Et (${selectedCount} tablo)`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {analyzeError && <div className="error-banner" style={{ marginTop: 12 }}>{analyzeError}</div>}
+
+      {/* Sonuçlar */}
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          {/* Özet başlık */}
+          <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ŞEMA</div>
+              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'monospace' }}>{result.schema}</div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TOPLAM BOYUT</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtBytes(result.totalBytes)}</div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>ANALİZ EDİLEN</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{result.tables.length} tablo</div>
+            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 6, padding: '8px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TOPLAM DOSYA</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {result.tables.reduce((s, t) => s + t.fileCount, 0).toLocaleString('tr-TR')}
+              </div>
+            </div>
+          </div>
+
+          {/* Bar chart */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {result.tables.map((t, i) => {
+              const pct = maxBytes > 0 ? (t.sizeBytes / maxBytes * 100) : 0
+              const totalPct = result.totalBytes > 0 ? (t.sizeBytes / result.totalBytes * 100) : 0
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Tablo adı */}
+                  <div style={{
+                    width: 200, minWidth: 200, fontSize: 12, fontFamily: 'monospace',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    color: 'var(--text)',
+                  }} title={t.table}>{t.table}</div>
+                  {/* Bar */}
+                  <div style={{ flex: 1, background: 'var(--border)', borderRadius: 4, height: 20, position: 'relative', minWidth: 0 }}>
+                    <div style={{
+                      width: pct + '%', height: '100%', borderRadius: 4,
+                      background: barColor(totalPct),
+                      transition: 'width 0.4s ease',
+                      minWidth: pct > 0 ? 4 : 0,
+                    }} />
+                  </div>
+                  {/* Boyut */}
+                  <div style={{ width: 80, textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {fmtBytes(t.sizeBytes)}
+                  </div>
+                  {/* Dosya sayısı */}
+                  <div style={{ width: 80, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {t.fileCount.toLocaleString('tr-TR')} dosya
+                  </div>
+                  {/* Yüzde */}
+                  <div style={{ width: 44, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    %{totalPct.toFixed(1)}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 // ─── Spark Detail Panel ──────────────────────────────────────────────────────
 

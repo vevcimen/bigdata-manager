@@ -61,6 +61,11 @@ export const exportTopology = async () => {
 
 // ── Service Detail ───────────────────────────────────────────────────────────
 export const getServiceDetail = (name) => request(`/services/${encodeURIComponent(name)}/detail`)
+
+// ── HDFS Tablo Analizi ───────────────────────────────────────────────────────
+export const getHdfsSchemas  = (name) => request(`/services/${encodeURIComponent(name)}/hdfs/schemas`)
+export const getHdfsTables   = (name, schema) => request(`/services/${encodeURIComponent(name)}/hdfs/schemas/${encodeURIComponent(schema)}/tables`)
+export const analyzeHdfsTables = (name, data) => request(`/services/${encodeURIComponent(name)}/hdfs/analyze`, { method: 'POST', body: JSON.stringify(data) })
 export const getTrinoQueryDetail = (serviceName, queryId) =>
   request(`/services/${encodeURIComponent(serviceName)}/trino/query/${encodeURIComponent(queryId)}`)
 export const killTrinoQuery = (serviceName, queryId) =>
