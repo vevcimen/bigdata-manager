@@ -140,6 +140,49 @@ def _hms_partition_counts(extra: dict, schema_name: str, table_names: List[str])
         return {}
 
 
+# ─── HMS bağlantı testi ───────────────────────────────────────────────────────
+
+@router.get("/api/services/{service_name}/hdfs/hms-test")
+async def hms_test(service_name: str, db: Session = Depends(get_db)):
+    svc = db.query(Service).filter_by(name=service_name).first()
+    if not svc:
+        raise HTTPException(404, "Servis bulunamadı")
+    extra = svc.extra or {}
+
+    hms_host = extra.get("hms_host", "")
+    if not hms_host:
+        return {"ok": False, "error": "hms_host tanımlı değil"}
+
+    hms_port = int(extra.get("hms_port", 3306))
+    hms_db   = extra.get("hms_db", "metastore")
+    hms_user = extra.get("hms_user", "")
+    hms_pass = extra.get("hms_password", "")
+
+    try:
+        conn = pymysql.connect(
+            host=hms_host, port=hms_port, db=hms_db,
+            user=hms_user, password=hms_pass,
+            connect_timeout=10, read_timeout=10,
+            charset="utf8mb4",
+        )
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM DBS")
+                db_count = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM TBLS")
+                tbl_count = cur.fetchone()[0]
+        return {
+            "ok":       True,
+            "host":     hms_host,
+            "port":     hms_port,
+            "database": hms_db,
+            "dbCount":  db_count,
+            "tblCount": tbl_count,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "host": hms_host, "port": hms_port, "database": hms_db}
+
+
 # ─── Şema listesi ─────────────────────────────────────────────────────────────
 
 @router.get("/api/services/{service_name}/hdfs/schemas")

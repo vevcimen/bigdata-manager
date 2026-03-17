@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery, killSparkApp, getHdfsSchemas, getHdfsTables, analyzeHdfsTables } from '../api.js'
+import { getServices, getService, createService, updateService, deleteService, getServiceDetail, exportTopology, getTrinoQueryDetail, killTrinoQuery, killSparkApp, getHdfsSchemas, getHdfsTables, analyzeHdfsTables, testHmsConnection } from '../api.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 
 const SERVICE_TYPES = ['hdfs', 'spark', 'kafka', 'trino', 'airflow', 'doris', 'mysql', 'zookeeper', 'pure_storage', 'kafka_connect']
@@ -438,6 +438,8 @@ function HdfsTableAnalysis({ serviceName }) {
   const [orphans,        setOrphans]        = useState([])
   const [tablesLoading,  setTablesLoading]  = useState(false)
   const [hmsEnabled,     setHmsEnabled]     = useState(false)
+  const [hmsTestResult,  setHmsTestResult]  = useState(null)
+  const [hmsTesting,     setHmsTesting]     = useState(false)
   const [checked,        setChecked]        = useState({})
   const [search,         setSearch]         = useState('')
   const [analyzing,      setAnalyzing]      = useState(false)
@@ -533,16 +535,53 @@ function HdfsTableAnalysis({ serviceName }) {
   const displayName = (t) => t.hmsName && t.hmsName !== t.name ? t.hmsName : t.name
   const hasAlias    = (t) => t.hmsName && t.hmsName !== t.name
 
+  const runHmsTest = async () => {
+    setHmsTesting(true)
+    setHmsTestResult(null)
+    try {
+      const r = await testHmsConnection(serviceName)
+      setHmsTestResult(r)
+    } catch (e) {
+      setHmsTestResult({ ok: false, error: e.message })
+    } finally {
+      setHmsTesting(false)
+    }
+  }
+
   return (
     <div className="card mb-24">
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:8 }}>
         <div className="card-title" style={{ margin:0 }}>HDFS Tablo Analizi</div>
-        {hmsEnabled && (
-          <span style={{ fontSize:11, background:'#1e3a5f', color:'#60a5fa', borderRadius:4, padding:'2px 8px', fontWeight:600 }}>
-            HMS ✓
-          </span>
-        )}
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {hmsEnabled && (
+            <span style={{ fontSize:11, background:'#1e3a5f', color:'#60a5fa', borderRadius:4, padding:'2px 8px', fontWeight:600 }}>
+              HMS ✓
+            </span>
+          )}
+          <button className="btn btn-sm" onClick={runHmsTest} disabled={hmsTesting} title="HMS bağlantısını test et">
+            {hmsTesting ? <><span className="spinner" style={{ width:10, height:10 }} /> Test…</> : 'HMS Test'}
+          </button>
+        </div>
       </div>
+      {hmsTestResult && (
+        <div style={{
+          marginBottom:12, padding:'10px 14px', borderRadius:6, fontSize:12,
+          background: hmsTestResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${hmsTestResult.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+        }}>
+          {hmsTestResult.ok ? (
+            <span style={{ color:'#4ade80' }}>
+              ✓ Bağlantı başarılı — {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database} &nbsp;|&nbsp;
+              {hmsTestResult.dbCount} veritabanı, {hmsTestResult.tblCount} tablo
+            </span>
+          ) : (
+            <span style={{ color:'#f87171' }}>
+              ✗ Bağlantı hatası: <strong>{hmsTestResult.error}</strong>
+              {hmsTestResult.host && <span style={{ color:'var(--text-muted)' }}> ({hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Şema seçimi */}
       {!schemas ? (
@@ -715,6 +754,16 @@ function HdfsTableAnalysis({ serviceName }) {
               ))}
             </div>
 
+            {/* Bar chart başlık satırı */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4, paddingLeft:6 }}>
+              <div style={{ width:190, minWidth:190, fontSize:10, color:'var(--text-muted)' }}>TABLO</div>
+              <div style={{ flex:1 }} />
+              <div style={{ width:72, textAlign:'right', fontSize:10, color:'var(--text-muted)' }}>BOYUT</div>
+              <div style={{ width:72, textAlign:'right', fontSize:10, color:'var(--text-muted)' }}>DOSYA SAYISI</div>
+              <div style={{ width:72, textAlign:'right', fontSize:10, color:'var(--text-muted)' }}>ORT. DOSYA</div>
+              {result.hmsEnabled && <div style={{ width:64, textAlign:'right', fontSize:10, color:'var(--text-muted)' }}>PARTİSYON</div>}
+              <div style={{ width:40, textAlign:'right', fontSize:10, color:'var(--text-muted)' }}>% (SEÇİLEN)</div>
+            </div>
             {/* Bar chart */}
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {result.tables.map((t, i) => {
