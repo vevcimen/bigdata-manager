@@ -587,13 +587,20 @@ function HdfsTableAnalysis({ serviceName }) {
         }}>
           {hmsTestResult.ok ? (
             <span style={{ color:'#4ade80' }}>
-              ✓ Bağlantı başarılı — {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database} &nbsp;|&nbsp;
+              ✓ Bağlantı başarılı
+              {hmsTestResult.tunnel && <span style={{ color:'#60a5fa' }}> [SSH tünel: {hmsTestResult.sshTarget}]</span>}
+              {' '}— {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database} &nbsp;|&nbsp;
               {hmsTestResult.dbCount} veritabanı, {hmsTestResult.tblCount} tablo
             </span>
           ) : (
             <span style={{ color:'#f87171' }}>
               ✗ Bağlantı hatası: <strong>{hmsTestResult.error}</strong>
-              {hmsTestResult.host && <span style={{ color:'var(--text-muted)' }}> ({hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>}
+              {hmsTestResult.tunnel && hmsTestResult.sshTarget && (
+                <span style={{ color:'var(--text-muted)' }}> (SSH: {hmsTestResult.sshTarget} → {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>
+              )}
+              {!hmsTestResult.tunnel && hmsTestResult.host && (
+                <span style={{ color:'var(--text-muted)' }}> ({hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>
+              )}
             </span>
           )}
         </div>
