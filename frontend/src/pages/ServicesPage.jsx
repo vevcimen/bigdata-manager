@@ -209,7 +209,7 @@ export default function ServicesPage({ onNavigate }) {
                           {k}
                         </td>
                         <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
-                          {k === 'password' ? '••••••••' : (typeof v === 'object' ? JSON.stringify(v) : String(v))}
+                          {(k.toLowerCase().includes('password') || k.toLowerCase().includes('secret')) ? '••••••••' : (typeof v === 'object' ? JSON.stringify(v) : String(v))}
                         </td>
                       </tr>
                     ))}
@@ -588,7 +588,7 @@ function HdfsTableAnalysis({ serviceName }) {
           {hmsTestResult.ok ? (
             <span style={{ color:'#4ade80' }}>
               ✓ Bağlantı başarılı
-              {hmsTestResult.tunnel && <span style={{ color:'#60a5fa' }}> [SSH tünel: {hmsTestResult.sshTarget}]</span>}
+              {hmsTestResult.tunnel && <span style={{ color:'#60a5fa' }}> [SSH: {hmsTestResult.sshUser}@{hmsTestResult.sshTarget}]</span>}
               {' '}— {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database} &nbsp;|&nbsp;
               {hmsTestResult.dbCount} veritabanı, {hmsTestResult.tblCount} tablo
             </span>
@@ -596,7 +596,7 @@ function HdfsTableAnalysis({ serviceName }) {
             <span style={{ color:'#f87171' }}>
               ✗ Bağlantı hatası: <strong>{hmsTestResult.error}</strong>
               {hmsTestResult.tunnel && hmsTestResult.sshTarget && (
-                <span style={{ color:'var(--text-muted)' }}> (SSH: {hmsTestResult.sshTarget} → {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>
+                <span style={{ color:'var(--text-muted)' }}> (SSH: {hmsTestResult.sshUser}@{hmsTestResult.sshTarget} → {hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>
               )}
               {!hmsTestResult.tunnel && hmsTestResult.host && (
                 <span style={{ color:'var(--text-muted)' }}> ({hmsTestResult.host}:{hmsTestResult.port}/{hmsTestResult.database})</span>

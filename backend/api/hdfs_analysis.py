@@ -18,6 +18,7 @@ import asyncio
 import logging
 from typing import List
 
+import paramiko
 import pymysql
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -67,17 +68,69 @@ def _run(host: Host, sp: dict, cmd: str):
 
 # ─── HMS MySQL bağlantısı (doğrudan veya SSH tüneli) ─────────────────────────
 
+def _hms_ssh_channel(extra: dict, sp: dict, svc_host: Host, mysql_host: str, mysql_port: int):
+    """
+    HMS için SSH tüneli açar, paramiko channel döner.
+
+    Öncelik sırası SSH auth:
+      1. hms_ssh_password (extra'da tanımlıysa şifre ile bağlan)
+      2. hms_ssh_user + global key (key ile bağlan, farklı kullanıcı)
+      3. Global SSH user + key (varsayılan)
+    """
+    ssh_target  = extra.get("hms_ssh_host", "").strip() or svc_host.ip or svc_host.hostname
+    ssh_user    = extra.get("hms_ssh_user", "").strip() or sp["user"]
+    ssh_pass    = extra.get("hms_ssh_password", "").strip()
+    jump        = svc_host.jump_via or None
+
+    import pathlib
+    expanded_key = sp["key_path"].replace("~", str(pathlib.Path.home()))
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    connect_kwargs = {"username": ssh_user, "timeout": sp["timeout"]}
+    if ssh_pass:
+        connect_kwargs["password"] = ssh_pass
+    else:
+        connect_kwargs["key_filename"] = expanded_key
+
+    if jump:
+        jump_client = paramiko.SSHClient()
+        jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        jump_kwargs = {"username": ssh_user, "timeout": sp["timeout"]}
+        if ssh_pass:
+            jump_kwargs["password"] = ssh_pass
+        else:
+            jump_kwargs["key_filename"] = expanded_key
+        jump_client.connect(jump, **jump_kwargs)
+        sock = jump_client.get_transport().open_channel(
+            "direct-tcpip", (ssh_target, 22), ("127.0.0.1", 0)
+        )
+        connect_kwargs["sock"] = sock
+        client._jump_client = jump_client
+
+    client.connect(ssh_target, **connect_kwargs)
+    channel = client.get_transport().open_channel(
+        "direct-tcpip", (mysql_host, mysql_port), ("127.0.0.1", 0)
+    )
+    # keep SSH client alive (channel holds a reference internally,
+    # but we attach it to avoid GC)
+    channel._ssh_client = client
+    return channel
+
+
 def _hms_conn(extra: dict, sp: dict = None, svc_host: Host = None):
     """
     HMS MySQL bağlantısı döner.
 
-    Tünel modu (önerilen):
-      - hms_ssh_host  → SSH hedefi (boşsa svc_host kullanılır)
-      - hms_host      → SSH sunucu üzerindeki MySQL adresi (genellikle 'localhost')
-      Paramiko channel'ı pymysql'in sock parametresine verilir.
+    Tünel modu (hms_ssh_host tanımlı VEYA hms_host=localhost/127.0.0.1):
+      SSH tüneli üzerinden pymysql sock bağlantısı.
+      Ek extra alanları:
+        hms_ssh_user      → SSH kullanıcısı (boşsa global SSH user)
+        hms_ssh_password  → SSH şifresi (boşsa key auth kullanılır)
 
     Doğrudan mod:
-      - hms_host doğrudan erişilebilir bir IP/hostname ise tünel gerekmez.
+      hms_host erişilebilir IP ise tünel gerekmez.
     """
     hms_mysql_host = extra.get("hms_host", "")
     if not hms_mysql_host:
@@ -89,27 +142,11 @@ def _hms_conn(extra: dict, sp: dict = None, svc_host: Host = None):
     hms_pass = extra.get("hms_password", "")
 
     hms_ssh_host = extra.get("hms_ssh_host", "").strip()
-
-    # Tünel modu: hms_ssh_host tanımlıysa VEYA host localhost/127.0.0.1 ise
-    use_tunnel = bool(hms_ssh_host) or hms_mysql_host in ("localhost", "127.0.0.1")
+    use_tunnel   = bool(hms_ssh_host) or hms_mysql_host in ("localhost", "127.0.0.1")
 
     if use_tunnel and sp and svc_host:
-        ssh_target = hms_ssh_host or svc_host.ip or svc_host.hostname
-        jump = svc_host.jump_via or None
         try:
-            client = ssh_pool.get_connection(
-                ssh_target,
-                sp["user"], sp["key_path"],
-                timeout=sp["timeout"],
-                jump_host=jump,
-                jump_user=sp["user"] if jump else None,
-            )
-            transport = client.get_transport()
-            channel   = transport.open_channel(
-                "direct-tcpip",
-                (hms_mysql_host, hms_port),
-                ("127.0.0.1", 0),
-            )
+            channel = _hms_ssh_channel(extra, sp, svc_host, hms_mysql_host, hms_port)
             return pymysql.connect(
                 host=hms_mysql_host, port=hms_port,
                 db=hms_db, user=hms_user, password=hms_pass,
@@ -118,6 +155,7 @@ def _hms_conn(extra: dict, sp: dict = None, svc_host: Host = None):
                 sock=channel,
             )
         except Exception as e:
+            ssh_target = hms_ssh_host or (svc_host.ip or svc_host.hostname)
             log.warning(f"HMS SSH tünel hatası ({ssh_target}→{hms_mysql_host}:{hms_port}): {e}")
             return None
     else:
@@ -200,28 +238,45 @@ async def hms_test(service_name: str, db: Session = Depends(get_db), cfg=Depends
     use_tunnel   = bool(hms_ssh_host) or hms_mysql_host in ("localhost", "127.0.0.1")
     ssh_target   = hms_ssh_host or host.ip or host.hostname
 
-    try:
-        conn = await asyncio.to_thread(_hms_conn, extra, sp, host)
-        if not conn:
-            return {
-                "ok":        False,
-                "error":     "Bağlantı kurulamadı (log dosyasını kontrol edin)",
-                "tunnel":    use_tunnel,
-                "sshTarget": ssh_target if use_tunnel else None,
-                "host":      hms_mysql_host,
-                "port":      hms_port,
-                "database":  hms_db,
-            }
+    def _test():
+        """Hata mesajını yukarı taşımak için exception'ı yakalamasın."""
+        ssh_user = extra.get("hms_ssh_user", "").strip() or sp["user"]
+        ssh_pass = extra.get("hms_ssh_password", "").strip()
+        hms_ssh_host = extra.get("hms_ssh_host", "").strip()
+        use_tunnel   = bool(hms_ssh_host) or hms_mysql_host in ("localhost", "127.0.0.1")
+
+        if use_tunnel:
+            channel = _hms_ssh_channel(extra, sp, host, hms_mysql_host, hms_port)
+            conn = pymysql.connect(
+                host=hms_mysql_host, port=hms_port,
+                db=hms_db, user=extra.get("hms_user", ""),
+                password=extra.get("hms_password", ""),
+                connect_timeout=10, read_timeout=30,
+                charset="utf8mb4", sock=channel,
+            )
+        else:
+            conn = pymysql.connect(
+                host=hms_mysql_host, port=hms_port,
+                db=hms_db, user=extra.get("hms_user", ""),
+                password=extra.get("hms_password", ""),
+                connect_timeout=10, read_timeout=30,
+                charset="utf8mb4",
+            )
         with conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM DBS")
                 db_count = cur.fetchone()[0]
                 cur.execute("SELECT COUNT(*) FROM TBLS")
                 tbl_count = cur.fetchone()[0]
+        return db_count, tbl_count
+
+    try:
+        db_count, tbl_count = await asyncio.to_thread(_test)
         return {
             "ok":        True,
             "tunnel":    use_tunnel,
             "sshTarget": ssh_target if use_tunnel else None,
+            "sshUser":   extra.get("hms_ssh_user", "").strip() or sp["user"],
             "host":      hms_mysql_host,
             "port":      hms_port,
             "database":  hms_db,
@@ -234,6 +289,7 @@ async def hms_test(service_name: str, db: Session = Depends(get_db), cfg=Depends
             "error":     str(e),
             "tunnel":    use_tunnel,
             "sshTarget": ssh_target if use_tunnel else None,
+            "sshUser":   extra.get("hms_ssh_user", "").strip() or sp["user"],
             "host":      hms_mysql_host,
             "port":      hms_port,
             "database":  hms_db,
