@@ -3,9 +3,9 @@ HDFS Tablo Analizi API'si.
 
 GET  /api/services/{name}/hdfs/schemas                       → Warehouse şema listesi (SSH)
 GET  /api/services/{name}/hdfs/schemas/{schema}/tables       → Şema altındaki tablo listesi + HMS adları
-POST /api/services/{name}/hdfs/analyze                       → Seçili tabloların boyut + dosya sayısı
+POST /api/services/{name}/hdfs/analyze                       → Seçili tabloların boyut + dosya sayısı + partition analizi
 
-HMS tablo adı eşlemesi için servis extra alanları:
+HMS tablo adı / partition sayısı için servis extra alanları:
   hms_host, hms_port (3306), hms_db (metastore), hms_user, hms_password
 """
 import asyncio
@@ -25,7 +25,10 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["hdfs-analysis"])
 
 HDFS_CMD_TIMEOUT = 120
+SMALL_FILE_THRESHOLD = 128 * 1024 * 1024  # 128 MB
 
+
+# ─── SSH yardımcıları ─────────────────────────────────────────────────────────
 
 def _ssh_params(cfg):
     return {
@@ -56,33 +59,39 @@ def _run(host: Host, sp: dict, cmd: str):
     )
 
 
-# ─── HMS MySQL: HDFS path → gerçek tablo adı eşlemesi ────────────────────────
+# ─── HMS yardımcıları ─────────────────────────────────────────────────────────
+
+def _hms_conn(extra: dict):
+    """HMS MySQL bağlantısı kurar. hms_host yoksa None döner."""
+    if not extra.get("hms_host"):
+        return None
+    try:
+        return pymysql.connect(
+            host=extra.get("hms_host"),
+            port=int(extra.get("hms_port", 3306)),
+            db=extra.get("hms_db", "metastore"),
+            user=extra.get("hms_user", ""),
+            password=extra.get("hms_password", ""),
+            connect_timeout=10,
+            read_timeout=30,
+            charset="utf8mb4",
+        )
+    except Exception as e:
+        log.warning(f"HMS bağlantı hatası: {e}")
+        return None
+
 
 def _hms_path_to_name(extra: dict, schema_name: str) -> dict:
     """
-    Hive Metastore MySQL'den {hdfs_dir_name: hms_table_name} eşlemesi döner.
-    extra'da hms_host, hms_db, hms_user, hms_password tanımlı olmalı.
-    Tanımlı değilse boş dict döner (sessizce atlar).
+    {hdfs_dir_name: hms_table_name} eşlemesi.
+    HMS yoksa boş dict döner.
     """
-    hms_host = extra.get("hms_host", "")
-    if not hms_host:
+    conn = _hms_conn(extra)
+    if not conn:
         return {}
-
-    hms_port = int(extra.get("hms_port", 3306))
-    hms_db   = extra.get("hms_db", "metastore")
-    hms_user = extra.get("hms_user", "")
-    hms_pass = extra.get("hms_password", "")
-
     try:
-        conn = pymysql.connect(
-            host=hms_host, port=hms_port, db=hms_db,
-            user=hms_user, password=hms_pass,
-            connect_timeout=10, read_timeout=30,
-            charset="utf8mb4",
-        )
         with conn:
             with conn.cursor() as cur:
-                # LOCATION'ın son path segmenti → TBL_NAME
                 cur.execute("""
                     SELECT s.LOCATION, t.TBL_NAME
                     FROM   TBLS t
@@ -91,7 +100,6 @@ def _hms_path_to_name(extra: dict, schema_name: str) -> dict:
                     WHERE  d.NAME = %s
                 """, (schema_name,))
                 rows = cur.fetchall()
-
         mapping = {}
         for location, tbl_name in rows:
             if location:
@@ -99,7 +107,36 @@ def _hms_path_to_name(extra: dict, schema_name: str) -> dict:
                 mapping[dir_name] = tbl_name
         return mapping
     except Exception as e:
-        log.warning(f"HMS bağlantı hatası ({hms_host}): {e}")
+        log.warning(f"HMS path→name sorgu hatası: {e}")
+        return {}
+
+
+def _hms_partition_counts(extra: dict, schema_name: str, table_names: List[str]) -> dict:
+    """
+    {hms_table_name: partition_count} döner.
+    HMS yoksa veya partitioned değilse 0.
+    """
+    if not table_names:
+        return {}
+    conn = _hms_conn(extra)
+    if not conn:
+        return {}
+    try:
+        placeholders = ",".join(["%s"] * len(table_names))
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT t.TBL_NAME, COUNT(p.PART_ID) AS part_count
+                    FROM   TBLS t
+                    JOIN   DBS  d ON t.DB_ID = d.DB_ID
+                    LEFT JOIN PARTITIONS p ON t.TBL_ID = p.TBL_ID
+                    WHERE  d.NAME = %s
+                      AND  t.TBL_NAME IN ({placeholders})
+                    GROUP  BY t.TBL_NAME
+                """, [schema_name] + list(table_names))
+                return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        log.warning(f"HMS partition count sorgu hatası: {e}")
         return {}
 
 
@@ -149,31 +186,37 @@ async def list_tables(
     sp  = _ssh_params(cfg)
     cmd = f"hdfs dfs -ls '{schema_path}' 2>/dev/null | tail -n +2 | awk '{{print $NF}}'"
 
-    # HDFS listesi ve HMS eşlemesi paralel çalıştır
+    # HDFS listesi + HMS eşlemesi paralel
     hdfs_result, hms_map = await asyncio.gather(
         asyncio.to_thread(_run, host, sp, cmd),
         asyncio.to_thread(_hms_path_to_name, extra, schema_name),
     )
     _, out, _ = hdfs_result
 
-    tables = []
+    tables  = []
+    orphans = []  # HDFS'de var, HMS'de yok
     for line in out.splitlines():
         line = line.strip()
         if not line:
             continue
         dir_name = line.rstrip("/").split("/")[-1]
-        if dir_name:
-            hms_name = hms_map.get(dir_name)  # None = eşleşme yok
-            tables.append({
-                "name":    dir_name,
-                "hmsName": hms_name,          # gerçek HMS adı (farklıysa)
-                "path":    line,
-            })
+        if not dir_name:
+            continue
+        hms_name = hms_map.get(dir_name) if hms_map else None
+        entry = {"name": dir_name, "hmsName": hms_name, "path": line}
+        tables.append(entry)
+        if hms_map and hms_name is None:
+            orphans.append(entry)
 
-    return {"schema": schema_name, "tables": tables, "hmsEnabled": bool(hms_map)}
+    return {
+        "schema":     schema_name,
+        "tables":     tables,
+        "orphans":    orphans,
+        "hmsEnabled": bool(hms_map),
+    }
 
 
-# ─── Boyut + dosya sayısı analizi ────────────────────────────────────────────
+# ─── Boyut + dosya sayısı + partition analizi ─────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
     schema_name: str
@@ -196,7 +239,6 @@ async def analyze_tables(
 
     sp = _ssh_params(cfg)
 
-    # Tek SSH çağrısında tüm tabloları sırayla say
     # hdfs dfs -count: DIR_COUNT  FILE_COUNT  CONTENT_SIZE  PATH
     paths     = [f"{warehouse}/{body.schema_name}/{t}" for t in body.tables]
     path_list = " ".join(f"'{p}'" for p in paths)
@@ -207,15 +249,15 @@ async def analyze_tables(
         f"done"
     )
 
-    # HDFS count ve HMS eşlemesi paralel
+    # HDFS count + HMS eşlemesi + HMS partition sayısı paralel
     hdfs_result, hms_map = await asyncio.gather(
         asyncio.to_thread(_run, host, sp, cmd),
         asyncio.to_thread(_hms_path_to_name, extra, body.schema_name),
     )
     _, out, _ = hdfs_result
 
-    results     = []
-    total_bytes = 0
+    # Önce HDFS sonuçlarını parse et
+    raw_results = []
     for line in out.splitlines():
         parts = line.split()
         if len(parts) < 4:
@@ -226,9 +268,8 @@ async def analyze_tables(
             size_bytes = int(parts[2])
             path       = parts[3]
             dir_name   = path.rstrip("/").split("/")[-1]
-            hms_name   = hms_map.get(dir_name)
-            total_bytes += size_bytes
-            results.append({
+            hms_name   = hms_map.get(dir_name) if hms_map else None
+            raw_results.append({
                 "table":     dir_name,
                 "hmsName":   hms_name,
                 "path":      path,
@@ -239,7 +280,44 @@ async def analyze_tables(
         except (ValueError, IndexError):
             continue
 
-    results.sort(key=lambda x: x["sizeBytes"], reverse=True)
+    # HMS partition sayısı sorgusunu gerçek tablo adları üzerinden yap
+    hms_names_in_result = [r["hmsName"] for r in raw_results if r["hmsName"]]
+    part_counts = {}
+    if hms_names_in_result:
+        part_counts = await asyncio.to_thread(
+            _hms_partition_counts, extra, body.schema_name, hms_names_in_result
+        )
+
+    # Son sonuçları oluştur
+    total_bytes = 0
+    results     = []
+    for r in raw_results:
+        size_bytes = r["sizeBytes"]
+        file_count = r["fileCount"]
+        total_bytes += size_bytes
+
+        # Boş tablo
+        is_empty = size_bytes == 0
+
+        # Ortalama dosya boyutu ve küçük dosya uyarısı
+        avg_file_bytes = (size_bytes // file_count) if file_count > 0 else 0
+        small_files    = (not is_empty) and file_count > 0 and (avg_file_bytes < SMALL_FILE_THRESHOLD)
+
+        # Partition sayısı
+        hms_name       = r["hmsName"]
+        partition_count = part_counts.get(hms_name, 0) if hms_name else 0
+
+        results.append({
+            **r,
+            "isEmpty":        is_empty,
+            "avgFileBytes":   avg_file_bytes,
+            "smallFiles":     small_files,
+            "partitionCount": partition_count,
+        })
+
+    # Sıralama: önce boş olmayanlar (büyükten küçüğe), sonra boşlar
+    results.sort(key=lambda x: (x["isEmpty"], -x["sizeBytes"]))
+
     return {
         "schema":     body.schema_name,
         "totalBytes": total_bytes,

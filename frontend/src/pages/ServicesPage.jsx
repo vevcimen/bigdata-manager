@@ -435,6 +435,7 @@ function HdfsTableAnalysis({ serviceName }) {
   const [schemasError,   setSchemasError]   = useState(null)
   const [selectedSchema, setSelectedSchema] = useState('')
   const [tables,         setTables]         = useState(null)
+  const [orphans,        setOrphans]        = useState([])
   const [tablesLoading,  setTablesLoading]  = useState(false)
   const [hmsEnabled,     setHmsEnabled]     = useState(false)
   const [checked,        setChecked]        = useState({})
@@ -468,6 +469,7 @@ function HdfsTableAnalysis({ serviceName }) {
   const loadTables = async (schema) => {
     setSelectedSchema(schema)
     setTables(null)
+    setOrphans([])
     setChecked({})
     setSearch('')
     setResult(null)
@@ -478,6 +480,7 @@ function HdfsTableAnalysis({ serviceName }) {
     try {
       const data = await getHdfsTables(serviceName, schema)
       setTables(data.tables || [])
+      setOrphans(data.orphans || [])
       setHmsEnabled(data.hmsEnabled || false)
     } catch (e) {
       setTables([])
@@ -519,7 +522,6 @@ function HdfsTableAnalysis({ serviceName }) {
   }
 
   const selectedCount = Object.values(checked).filter(Boolean).length
-  const maxBytes = result?.tables?.[0]?.sizeBytes || 1
 
   const barColor = (pct) => {
     if (pct > 50) return 'linear-gradient(90deg,#ef4444,#f87171)'
@@ -670,58 +672,121 @@ function HdfsTableAnalysis({ serviceName }) {
 
       {analyzeError && <div className="error-banner" style={{ marginTop:12 }}>{analyzeError}</div>}
 
-      {/* ─── Sonuçlar ─────────────────────────────────────────── */}
-      {result && (
-        <div style={{ marginTop:24 }}>
-          {/* Özet kartlar */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px,1fr))', gap:10, marginBottom:20 }}>
-            {[
-              { label:'ŞEMA',           value: result.schema,     mono:true },
-              { label:'TOPLAM BOYUT',   value: fmtBytes(result.totalBytes) },
-              { label:'ANALİZ EDİLEN',  value: `${result.tables.length} tablo` },
-              { label:'TOPLAM DOSYA',   value: result.tables.reduce((s,t)=>s+t.fileCount,0).toLocaleString('tr-TR') },
-              { label:'TOPLAM KLASÖR',  value: result.tables.reduce((s,t)=>s+t.dirCount,0).toLocaleString('tr-TR') },
-            ].map((c,i) => (
-              <div key={i} style={{ background:'var(--bg)', borderRadius:7, padding:'10px 14px', border:'1px solid var(--border)' }}>
-                <div style={{ fontSize:10, color:'var(--text-muted)', letterSpacing:'0.05em', marginBottom:4 }}>{c.label}</div>
-                <div style={{ fontSize:14, fontWeight:700, fontFamily: c.mono ? 'monospace' : undefined }}>{c.value}</div>
-              </div>
-            ))}
+      {/* ─── Orphan Tablo Uyarısı (tablolar yüklendikten sonra, analiz olmasa da) ── */}
+      {hmsEnabled && orphans.length > 0 && (
+        <div style={{ marginTop:16, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'12px 16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+            <span style={{ fontSize:16 }}>⚠</span>
+            <span style={{ fontWeight:700, fontSize:13, color:'#f59e0b' }}>HDFS'de Var, HMS'de Yok — {orphans.length} Orphan Klasör</span>
           </div>
-
-          {/* Bar chart */}
-          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-            {result.tables.map((t, i) => {
-              const pct      = maxBytes > 0 ? (t.sizeBytes / maxBytes * 100) : 0
-              const totalPct = result.totalBytes > 0 ? (t.sizeBytes / result.totalBytes * 100) : 0
-              const label    = t.hmsName && t.hmsName !== t.table ? t.hmsName : t.table
-              const subLabel = t.hmsName && t.hmsName !== t.table ? t.table : null
-              return (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  {/* Tablo adı (HMS adı büyük, HDFS adı küçük) */}
-                  <div style={{ width:200, minWidth:200 }}>
-                    <div style={{ fontSize:12, fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--text)' }} title={label}>{label}</div>
-                    {subLabel && <div style={{ fontSize:10, fontFamily:'monospace', color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={subLabel}>↳ {subLabel}</div>}
-                  </div>
-                  {/* Bar */}
-                  <div style={{ flex:1, background:'var(--border)', borderRadius:4, height:18, overflow:'hidden', minWidth:0 }}>
-                    <div style={{
-                      width: pct + '%', height:'100%',
-                      background: barColor(totalPct),
-                      borderRadius:4,
-                      transition:'width 0.5s cubic-bezier(0.4,0,0.2,1)',
-                      minWidth: pct > 0 ? 4 : 0,
-                    }} />
-                  </div>
-                  <div style={{ width:76, textAlign:'right', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }}>{fmtBytes(t.sizeBytes)}</div>
-                  <div style={{ width:76, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>{t.fileCount.toLocaleString('tr-TR')} dosya</div>
-                  <div style={{ width:40, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>%{totalPct.toFixed(1)}</div>
-                </div>
-              )
-            })}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {orphans.map((o,i) => (
+              <span key={i} style={{ background:'rgba(245,158,11,0.15)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:4, padding:'2px 8px', fontSize:11, fontFamily:'monospace', color:'#fbbf24' }}>
+                {o.name}
+              </span>
+            ))}
           </div>
         </div>
       )}
+
+      {/* ─── Analiz Sonuçları ─────────────────────────────────────────── */}
+      {result && (() => {
+        const emptyTables     = result.tables.filter(t => t.isEmpty)
+        const smallFileTables = result.tables.filter(t => t.smallFiles)
+        const nonEmptyTables  = result.tables.filter(t => !t.isEmpty)
+        const maxB            = nonEmptyTables[0]?.sizeBytes || 1
+
+        return (
+          <div style={{ marginTop:24 }}>
+            {/* Özet kartlar */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px,1fr))', gap:10, marginBottom:16 }}>
+              {[
+                { label:'ŞEMA',          value: result.schema,    mono:true },
+                { label:'TOPLAM BOYUT',  value: fmtBytes(result.totalBytes) },
+                { label:'ANALİZ EDİLEN', value: `${result.tables.length} tablo` },
+                { label:'TOPLAM DOSYA',  value: result.tables.reduce((s,t)=>s+t.fileCount,0).toLocaleString('tr-TR') },
+                { label:'BOŞ TABLO',     value: emptyTables.length, warn: emptyTables.length > 0 },
+                { label:'KÜÇÜK DOSYA',   value: smallFileTables.length, warn: smallFileTables.length > 0 },
+              ].map((c,i) => (
+                <div key={i} style={{ background:'var(--bg)', borderRadius:7, padding:'10px 14px', border:`1px solid ${c.warn ? 'rgba(239,68,68,0.4)' : 'var(--border)'}` }}>
+                  <div style={{ fontSize:10, color: c.warn ? '#f87171' : 'var(--text-muted)', letterSpacing:'0.05em', marginBottom:4 }}>{c.label}</div>
+                  <div style={{ fontSize:14, fontWeight:700, fontFamily: c.mono ? 'monospace' : undefined, color: c.warn ? '#f87171' : undefined }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Bar chart */}
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {result.tables.map((t, i) => {
+                const pct      = maxB > 0 ? (t.sizeBytes / maxB * 100) : 0
+                const totalPct = result.totalBytes > 0 ? (t.sizeBytes / result.totalBytes * 100) : 0
+                const label    = t.hmsName && t.hmsName !== t.table ? t.hmsName : t.table
+                const subLabel = t.hmsName && t.hmsName !== t.table ? t.table : null
+
+                return (
+                  <div key={i} style={{
+                    display:'flex', alignItems:'center', gap:10,
+                    background: t.isEmpty ? 'rgba(239,68,68,0.06)' : t.smallFiles ? 'rgba(245,158,11,0.05)' : 'transparent',
+                    borderRadius:6, padding:'3px 6px',
+                    border: t.isEmpty ? '1px solid rgba(239,68,68,0.2)' : t.smallFiles ? '1px solid rgba(245,158,11,0.15)' : '1px solid transparent',
+                  }}>
+                    {/* Tablo adı */}
+                    <div style={{ width:190, minWidth:190 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                        <span style={{ fontSize:12, fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, color:'var(--text)' }} title={label}>{label}</span>
+                        {t.isEmpty    && <span style={{ fontSize:10, background:'rgba(239,68,68,0.2)', color:'#f87171', borderRadius:3, padding:'0 4px', whiteSpace:'nowrap', flexShrink:0 }}>Boş</span>}
+                        {t.smallFiles && <span style={{ fontSize:10, background:'rgba(245,158,11,0.2)', color:'#fbbf24', borderRadius:3, padding:'0 4px', whiteSpace:'nowrap', flexShrink:0 }}>⚠ Küçük Dosya</span>}
+                      </div>
+                      {subLabel && <div style={{ fontSize:10, fontFamily:'monospace', color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>↳ {subLabel}</div>}
+                    </div>
+                    {/* Bar */}
+                    <div style={{ flex:1, background:'var(--border)', borderRadius:4, height:16, overflow:'hidden', minWidth:0 }}>
+                      {!t.isEmpty && (
+                        <div style={{
+                          width: pct + '%', height:'100%',
+                          background: barColor(totalPct),
+                          borderRadius:4,
+                          transition:'width 0.5s cubic-bezier(0.4,0,0.2,1)',
+                          minWidth: pct > 0 ? 4 : 0,
+                        }} />
+                      )}
+                    </div>
+                    {/* Boyut */}
+                    <div style={{ width:72, textAlign:'right', fontSize:12, fontWeight:600, whiteSpace:'nowrap', color: t.isEmpty ? '#f87171' : undefined }}>
+                      {t.isEmpty ? '—' : fmtBytes(t.sizeBytes)}
+                    </div>
+                    {/* Dosya sayısı */}
+                    <div style={{ width:72, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>
+                      {t.fileCount.toLocaleString('tr-TR')} dosya
+                    </div>
+                    {/* Ortalama dosya boyutu */}
+                    <div style={{ width:72, textAlign:'right', fontSize:11, color: t.smallFiles ? '#fbbf24' : 'var(--text-muted)', whiteSpace:'nowrap' }}>
+                      {t.fileCount > 0 ? 'ø ' + fmtBytes(t.avgFileBytes) : '—'}
+                    </div>
+                    {/* Partition sayısı */}
+                    {result.hmsEnabled && (
+                      <div style={{ width:64, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>
+                        {t.partitionCount > 0 ? `${t.partitionCount.toLocaleString('tr-TR')} part.` : 'part. yok'}
+                      </div>
+                    )}
+                    {/* Yüzde */}
+                    <div style={{ width:40, textAlign:'right', fontSize:11, color:'var(--text-muted)', whiteSpace:'nowrap' }}>
+                      %{totalPct.toFixed(1)}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Küçük dosya sorunu açıklaması */}
+            {smallFileTables.length > 0 && (
+              <div style={{ marginTop:12, fontSize:11, color:'var(--text-muted)', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)', borderRadius:6, padding:'8px 12px' }}>
+                ⚠ <strong style={{ color:'#fbbf24' }}>Küçük Dosya Sorunu</strong>: Ortalama dosya boyutu &lt;128 MB olan tablolar işaretlendi. Bu tablolarda compaction veya birleştirme işlemi önerilir.
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
