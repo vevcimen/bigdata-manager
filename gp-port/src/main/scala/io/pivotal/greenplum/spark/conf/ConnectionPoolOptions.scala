@@ -10,8 +10,14 @@ class ConnectionPoolOptions(rawParams: Map[String, String] = Map.empty)
   private val prefix = "pool"
 
   val minimumIdle    : Int = option("pool.minIdle",   Default("0"),     int)
-  val maximumPoolSize: Int = option("pool.maxSize",   Default("1"),     positiveInt)
+  val maximumPoolSize: Int = option("pool.maxSize",   Default("5"),     positiveInt)
   val idleTimeoutMs  : Int = option("pool.timeoutMs", Default("30000"), positiveInt)
+
+  override def hashCode(): Int = rawParams.hashCode()
+  override def equals(obj: Any): Boolean = obj match {
+    case other: ConnectionPoolOptions => rawParams == other.parameters
+    case _ => false
+  }
 }
 
 object ConnectionPoolOptions {
