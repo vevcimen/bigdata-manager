@@ -22,3 +22,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# sbt / Scala build artifacts
+gp-port/target/
+gp-port/project/target/
+gp-port/project/project/
