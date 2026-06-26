@@ -3,9 +3,10 @@ package io.pivotal.greenplum.spark.externaltable
 import com.typesafe.scalalogging.LazyLogging
 import io.pivotal.greenplum.spark.SqlExecutor
 import io.pivotal.greenplum.spark.conf.GreenplumOptions
+import io.pivotal.greenplum.spark.jdbc.ConnectionManager
 import org.apache.spark.sql.Row
 
-import java.sql.{Connection, DriverManager}
+import java.sql.Connection
 import scala.util.Using
 
 /**
@@ -39,19 +40,12 @@ class PartitionWriter(
           else
             new PartitionData(idx, null, it.toList, rowTransformer)
 
-        val conn = openConnection()
-        try {
+        Using.resource(getConnection()) { conn =>
           val dataMover = getDataMover(conn)
           val count     = dataMover.moveData(partitionData).get
           conn.commit()
           logger.debug(s"Datamover $idx copied $count rows")
           Iterator(count)
-        } catch {
-          case e: Exception =>
-            try { conn.rollback() } catch { case _: Exception => }
-            throw e
-        } finally {
-          try { conn.close() } catch { case _: Exception => }
         }
       }
     }
@@ -63,14 +57,6 @@ class PartitionWriter(
     new GreenplumDataMover(applicationId, greenplumOptions, tableManager, gpfdistService)
   }
 
-  /** Direct JDBC connection — no pool, no leak, 1 connection per partition. */
-  private def openConnection(): Connection = {
-    Class.forName(greenplumOptions.driver)
-    val props = new java.util.Properties()
-    props.setProperty("user", greenplumOptions.user)
-    greenplumOptions.password.foreach(props.setProperty("password", _))
-    val conn = DriverManager.getConnection(greenplumOptions.url, props)
-    conn.setAutoCommit(false)
-    conn
-  }
+  def getConnection(): Connection =
+    ConnectionManager.getConnection(greenplumOptions, autoCommit = false)
 }

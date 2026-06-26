@@ -3,10 +3,9 @@ package io.pivotal.greenplum.spark.jdbc
 import io.pivotal.greenplum.spark.conf.ConnectionPoolOptions
 
 case class ConnectionKey(
-    jdbcUrl                 : String,
-    userName                : String,
-    hashedPassword          : String,
-    connectionPoolOptionsHash: Int
+    jdbcUrl       : String,
+    userName      : String,
+    hashedPassword: String
 )
 
 object ConnectionKey {
@@ -17,7 +16,6 @@ object ConnectionKey {
       userName,
       password.map(p => java.security.MessageDigest.getInstance("MD5")
         .digest(p.getBytes("UTF-8"))
-        .map("%02x".format(_)).mkString).getOrElse(""),
-      poolOpts.hashCode()
+        .map("%02x".format(_)).mkString).getOrElse("")
     )
 }
