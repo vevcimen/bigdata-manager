@@ -10,7 +10,7 @@ class ConnectionPoolOptions(rawParams: Map[String, String] = Map.empty)
   private val prefix = "pool"
 
   val minimumIdle    : Int = option("pool.minIdle",   Default("0"),     int)
-  val maximumPoolSize: Int = option("pool.maxSize",   Default("2"),     positiveInt)
+  val maximumPoolSize: Int = option("pool.maxSize",   Default("1"),     positiveInt)
   val idleTimeoutMs  : Int = option("pool.timeoutMs", Default("30000"), positiveInt)
 }
 
