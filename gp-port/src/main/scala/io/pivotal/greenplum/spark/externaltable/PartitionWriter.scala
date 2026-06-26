@@ -6,7 +6,7 @@ import io.pivotal.greenplum.spark.conf.GreenplumOptions
 import io.pivotal.greenplum.spark.jdbc.ConnectionManager
 import org.apache.spark.sql.Row
 
-import java.sql.{Connection, DriverManager}
+import java.sql.Connection
 import scala.util.Using
 
 /**
@@ -40,7 +40,7 @@ class PartitionWriter(
           else
             new PartitionData(idx, null, it.toList, rowTransformer)
 
-        Using.resource(getDirectConnection()) { conn =>
+        Using.resource(getConnection()) { conn =>
           val dataMover = getDataMover(conn)
           val count     = dataMover.moveData(partitionData).get
           conn.commit()
@@ -57,24 +57,6 @@ class PartitionWriter(
     new GreenplumDataMover(applicationId, greenplumOptions, tableManager, gpfdistService)
   }
 
-  /**
-   * Creates a direct JDBC connection (bypassing HikariCP pool).
-   * Each partition gets its own dedicated connection so that:
-   *  - TEMP TABLEs remain visible within the same session
-   *  - Connection count is bounded by the number of active partitions
-   *  - Connections are closed immediately when the partition finishes
-   */
-  def getDirectConnection(): Connection = {
-    Class.forName(greenplumOptions.driver)
-    val conn = greenplumOptions.password match {
-      case Some(pw) =>
-        DriverManager.getConnection(greenplumOptions.url, greenplumOptions.user, pw)
-      case None =>
-        val props = new java.util.Properties()
-        props.setProperty("user", greenplumOptions.user)
-        DriverManager.getConnection(greenplumOptions.url, props)
-    }
-    conn.setAutoCommit(false)
-    conn
-  }
+  def getConnection(): Connection =
+    ConnectionManager.getConnection(greenplumOptions, autoCommit = false)
 }
