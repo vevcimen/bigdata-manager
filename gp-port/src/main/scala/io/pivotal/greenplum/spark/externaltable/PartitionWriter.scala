@@ -15,6 +15,7 @@ import scala.util.Using
  * `gpfdistService` is `@transient lazy` so it is initialised on each executor the first
  * time `getClosure` is invoked, not during driver serialization.
  */
+@SerialVersionUID(-7341052219816373304L)
 class PartitionWriter(
     applicationId   : String,
     greenplumOptions: GreenplumOptions,
